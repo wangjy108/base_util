@@ -8,19 +8,19 @@
 """
 
 from rdkit import rdBase, Chem
-#from rdkit.Chem import Draw, AllChem
-#from rdkit.Chem import rdMolAlign
-#from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import Draw, AllChem
+from rdkit.Chem import rdMolAlign
+from rdkit.Chem import rdMolDescriptors
 import pandas as pd
 import numpy as np
 import os
-#import argparse
+import argparse
 import copy
 import scipy.spatial
 import logging
 import math
-from util.Align import *
-from util.CalRMSD import *
+from Align import *
+from CalRMSD import *
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
@@ -40,11 +40,13 @@ class cluster():
         except Exception as e:
             self.method = 'RMSD'
         else:
-            try:
-                self.mol_set[0].GetProp(self.method)
-            except Exception as e:
-                logging.info(f"Not valid method, use RMSD instead")
-                self.method = 'RMSD'
+            if self.method != 'RMSD':
+                try:
+                    self.mol_set[0].GetProp(self.method)
+                except Exception as e:
+                    logging.info(f"Not valid method, use RMSD instead")
+                    self.method = 'RMSD'
+            
         
         try:
             self.tag = args["name_tag"]

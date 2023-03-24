@@ -17,10 +17,13 @@ setup(
     description=('UNIPF util part'),
     url='https://github.com/wangjy108/Uni-PF/tree/main/util',
     license=None,
-    keywords='MMPBSA',
+    #keywords='util',
     #install_requires=install_requires,
     packages=find_packages(),
     zip_safe = False,
     #packages=packages,
     include_package_data=True
+    package_data={
+        '':['*.py']
+    }
 )

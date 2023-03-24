@@ -14,7 +14,6 @@ import numpy as np
 import os
 import logging
 
-
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
 """
@@ -43,11 +42,11 @@ class ConfGen():
         try:
             self.saveConfNum = args["saveConfNum"]
         except Exception as e:
-            self.saveConfNum = 10
+            self.saveConfNum = 20
 
         ##automatic define if there is header in input smi csv file
-        df = pd.read_csv(self.smi, sep="\\s+", header=None, nrows=5)
-        df_header = pd.read_csv(self.smi, sep="\\s+", nrows=5)
+        df = pd.read_csv(self.smi, sep="\\s+", header=None)
+        df_header = pd.read_csv(self.smi, sep="\\s+")
         if list(df_header.columns)[0] == df.iloc[:,0].to_list()[0]:
             self.df = df
         else:

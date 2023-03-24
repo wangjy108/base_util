@@ -19,8 +19,8 @@ import copy
 import scipy.spatial
 import logging
 import math
-from Align import *
-from CalRMSD import *
+from util.Align import *
+from util.CalRMSD import *
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 

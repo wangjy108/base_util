@@ -22,7 +22,7 @@ setup(
     packages=find_packages(),
     zip_safe = False,
     #packages=packages,
-    include_package_data=True
+    include_package_data=True,
     package_data={
         '':['*.py']
     }

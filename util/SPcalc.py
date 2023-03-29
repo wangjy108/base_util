@@ -51,6 +51,24 @@ class System():
         except Exception as e:
             self.functional = 'b3lyp'
         
+        try:
+            self.if_auto_charge = args["if_auto_charge"]
+        except Exception as e:
+            self.if_auto_charge = True
+        else:
+            if not isinstance(self.if_auto_charge, bool):
+                self.if_auto_charge = True
+        
+        if self.if_auto_charge = False:
+            try:
+                self.charge = int(args["define_charge"])
+            except Exception as e:
+                self.if_auto_charge = True
+            else:
+                if not isinstance(self.charge, int):
+                    self.if_auto_charge = True
+            
+
         
         try:
             self.basis = args["basis"]
@@ -84,17 +102,20 @@ class System():
             atom = [atom.GetSymbol() for atom in self.mol[ii].GetAtoms()]
             xyz = self.mol[ii].GetConformer().GetPositions()
 
-            ## get charge
-            AllChem.ComputeGasteigerCharges(self.mol[ii])
-            _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol[ii].GetAtoms()])
+            if self.if_auto_charge:
+                ## get charge
+                AllChem.ComputeGasteigerCharges(self.mol[ii])
+                _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol[ii].GetAtoms()])
 
-            ## sign
-            charge_sign = _charge / abs(_charge)
+                ## sign
+                charge_sign = _charge / abs(_charge)
 
-            if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
-                charge = math.ceil(abs(_charge)) * charge_sign
+                if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
+                    charge = math.ceil(abs(_charge)) * charge_sign
+                else:
+                    charge = (math.ceil(abs(_charge)) - 1)* charge_sign
             else:
-                charge = (math.ceil(abs(_charge)) - 1)* charge_sign
+                charge = self.charge
         
             ## save _input.xyz 
             df = pd.DataFrame({"atom": atom, \

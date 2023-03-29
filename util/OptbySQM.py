@@ -108,12 +108,14 @@ class System():
 
             ## get charge
             AllChem.ComputeGasteigerCharges(self.mol[ii])
-            charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol[ii].GetAtoms()])
+            _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol[ii].GetAtoms()])
 
-            if math.ceil(charge) - (charge //1) < 1e-1:
-                charge = math.ceil(charge)
+            charge_sign = _charge / abs(_charge)
+
+            if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
+                charge = math.ceil(abs(_charge)) * charge_sign
             else:
-                charge = math.ceil(charge) - 1
+                charge = (math.ceil(abs(_charge)) - 1)* charge_sign
         
             ## save _input.xyz 
             df = pd.DataFrame({"atom": atom, \
@@ -132,7 +134,7 @@ class System():
                 for idx, row in df.iterrows():
                     ff.write(f"{row['atom']:<3}{row['x']:>15.3f}{row['y']:>15.3f}{row['z']:>15.3f}\n")
             
-            self.command_line.append(f"xtb _input_{ii}.xyz --opt --chrg {charge} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
+            self.command_line.append(f"xtb _input_{ii}.xyz --opt --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
             
     def run_set(self, sub_set:list):
         collect = {}

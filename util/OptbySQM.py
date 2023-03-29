@@ -221,7 +221,7 @@ class System():
             real_mol = each[0]
             real_mol.SetProp("Energy_xtb", str(each[1]))
             real_mol.SetProp("_Name", each[2])
-            real_mol.SetProp("charge", each[3])
+            real_mol.SetProp("charge", str(each[3]))
             standar_save.append(real_mol)
         
         return standar_save

@@ -140,6 +140,7 @@ class System():
         collect = {}
         for each in sub_set:
             real_idx = int(each.split()[1].split(".")[0].split("_")[-1])
+            get_charge = int(each.split()[4])
             path = os.path.join(self.workdir, f"run_{real_idx}")
             os.chdir(path)
             (status, output) = subprocess.getstatusoutput(each)
@@ -154,7 +155,7 @@ class System():
 
                 #mol_opt.SetProp("Energy_xtb", f"{getEnergy}")
                 #mol_opt.SetProp("_Name", f"{self.db_prefix}_{real_idx}")
-                collect.setdefault(real_idx, (mol_opt, getEnergy, f"{self.db_prefix}_{real_idx}"))
+                collect.setdefault(real_idx, (mol_opt, getEnergy, f"{self.db_prefix}_{real_idx}", get_charge))
             else:
                 collect.setdefault(real_idx, None)
             os.chdir(self.workdir)
@@ -219,7 +220,8 @@ class System():
         for each in save:
             real_mol = each[0]
             real_mol.SetProp("Energy_xtb", str(each[1]))
-            real_mol.SetProp("_Name", each[-1])
+            real_mol.SetProp("_Name", each[2])
+            real_mol.SetProp("charge", each[3])
             standar_save.append(real_mol)
         
         return standar_save

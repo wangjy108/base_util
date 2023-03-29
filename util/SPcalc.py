@@ -59,7 +59,7 @@ class System():
             if not isinstance(self.if_auto_charge, bool):
                 self.if_auto_charge = True
         
-        if self.if_auto_charge = False:
+        if not self.if_auto_charge:
             try:
                 self.charge = int(args["define_charge"])
             except Exception as e:
@@ -68,7 +68,6 @@ class System():
                 if not isinstance(self.charge, int):
                     self.if_auto_charge = True
             
-
         
         try:
             self.basis = args["basis"]

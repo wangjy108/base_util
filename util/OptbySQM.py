@@ -23,7 +23,7 @@ logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
 """
 // input sdf, transform xyz and perform xtb opt
-// return rdkit mol set
+// return rdkit mol set and saved sdf file
 """
 
 class System():
@@ -180,12 +180,51 @@ class System():
         
         return dict_assemble
     
+    def shift_sdf(self, original_sdf, update_sdf, save_prefix):
+        with open(original_sdf, "r+") as f1:
+            ori_content = [ff for ff in f1.readlines()]
+
+        rdmolobj_ori = [mm for mm in Chem.SDMolSupplier(original_sdf, removeHs=False) if mm][0]
+        
+        with open(update_sdf, "r+") as f2:
+            upt_content = [ff for ff in f2.readlines()]
+        
+        rdmolobj_upt = [mm for mm in Chem.SDMolSupplier(update_sdf, removeHs=False) if mm][0]
+
+        ## header should stop at 
+        xyz_upt = rdmolobj_upt.GetConformer().GetPositions()
+        xyz_ori = rdmolobj_ori.GetConformer().GetPositions()
+        ## xyz_upt[-1][0]
+        
+        upper_end_idx = [ii for ii in range(len(upt_content)) if "END" in upt_content[ii]][0]
+        
+        middle_start_idx = [ii for ii in range(len(ori_content)) if ori_content[ii].strip().startswith(str(xyz_ori[-1][0]))][0] + 1
+        middle_end_idx = [ii for ii in range(len(ori_content)) if "END" in ori_content[ii]][0]
+
+        header_replace_idx_upt = [ii for ii in range(len(upt_content)) \
+                                if upt_content[ii].strip().startswith(str(xyz_upt[0][0]))][0] -1
+        header_replace_idx_ori = [ii for ii in range(len(ori_content)) \
+                                if ori_content[ii].strip().startswith(str(xyz_ori[0][0]))][0] -1
+        
+        upper = upt_content[:upper_end_idx]
+        upper[header_replace_idx_upt] = ori_content[header_replace_idx_ori]
+
+        assemble_content = upper \
+                        + ori_content[middle_start_idx:middle_end_idx] \
+                        + upt_content[upper_end_idx:]
+        
+        with open(f"{save_prefix}.sdf", "w+") as cc:
+            for line in assemble_content:
+                cc.write(line)
+        
+        return 
+    
     def run_process(self):
         dict_assemble = self.run_opt()
         if [kk for kk in dict_assemble.keys() if not dict_assemble[kk]]:
             logging.info(f"xtb opt failed with {[kk for kk in dict_assemble.keys() if not dict_assemble[kk]]}th mol in input sdf db")
         
-        standar_save = []
+        standard_save = []
 
         ## sort optimized mol according to energy
         optimized = sorted([vv for vv in dict_assemble.values() if vv], key=lambda x:x[1])
@@ -216,18 +255,47 @@ class System():
                 if min(compare_rmsd) > self.rmsd_cutoff:
                     save.append(for_align[ii])
             
-        
         for each in save:
             real_mol = each[0]
             real_mol.SetProp("Energy_xtb", str(each[1]))
             real_mol.SetProp("_Name", each[2])
             real_mol.SetProp("charge", str(each[3]))
-            standar_save.append(real_mol)
-        
-        return standar_save
+            real_idx = int(each[2].split("_")[-1])
+
+            save_ori = Chem.SDWriter(f"_TEMP_ori_{real_idx}.sdf")
+            save_ori.write(self.mol[real_idx])
+            save_ori.close()
+            save_upt = Chem.SDWriter(f"_TEMP_upt_{real_idx}.sdf") 
+            save_upt.write(real_mol)
+            save_upt.close()
+
+            self.shift_sdf(original_sdf=f"_TEMP_ori_{real_idx}.sdf", \
+                           update_sdf=f"_TEMP_upt_{real_idx}.sdf", \
+                           save_prefix=f"_TEMP_opt_{real_idx}")
+
+            try:
+                standard_real_mol = [mm for mm in Chem.SDMolSupplier(f"_TEMP_opt_{real_idx}.sdf", removeHs=False) if mm][0]
+            except Exception as e:
+                standard_save.append(real_mol)
+            else:
+                standard_save.append(standard_real_mol)
+            
+            
+        final_cc = Chem.SDWriter("_OPT.sdf")
+        for mol in standard_save:
+            final_cc.write(mol)
+        final_cc.close()
+
+        os.system("rm -f _TEMP*")
+
+        logging.info(f"Optimized mol saved in {os.getcwd()}/_OPT.sdf")
+
+        return standard_save
                 
 
-    
+if __name__ == "__main__":
+    sys = System(input_sdf="Ligs.sdf")
+    get = sys.run_process()
                 
 
 

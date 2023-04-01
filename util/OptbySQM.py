@@ -110,12 +110,16 @@ class System():
             AllChem.ComputeGasteigerCharges(self.mol[ii])
             _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol[ii].GetAtoms()])
 
-            charge_sign = _charge / abs(_charge)
+            if not _charge:
+                charge_sign = _charge / abs(_charge)
 
-            if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
-                charge = math.ceil(abs(_charge)) * charge_sign
+                if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
+                    charge = math.ceil(abs(_charge)) * charge_sign
+                else:
+                    charge = (math.ceil(abs(_charge)) - 1)* charge_sign
+            
             else:
-                charge = (math.ceil(abs(_charge)) - 1)* charge_sign
+                charge = _charge
         
             ## save _input.xyz 
             df = pd.DataFrame({"atom": atom, \

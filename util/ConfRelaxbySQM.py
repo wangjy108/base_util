@@ -198,7 +198,7 @@ class System():
                 cc.write(each)
 
         logging.info("Save all dumped geomtries in SAVE.sdf")
-        os.system("rm -f sc* gfn* .xtb* xtbmdok *.log *.xyz md* _TEMP*")
+        os.system("rm -f sc* gfn* .xtb* xtbmdok *.log *.xyz md* _TEMP* _log")
 
         if _track == len(geom_idx):
             os.system("rm -f xtb.trj")

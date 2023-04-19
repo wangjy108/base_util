@@ -12,9 +12,18 @@ logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
 class main():
     def __init__(self, **args):
-        self.db_name = args["input_sdf"]
-
-        self.mol = [mm for mm in Chem.SDMolSupplier(self.db_name, removeHs=False) if mm]
+        try:
+            self.db_name = args["input_sdf"]
+        except Exception as e:
+            self.db_name = "_INPUT.sdf"
+            try:
+                self.mol = args["input_rdmol_obj"]
+                if not isinstance(self.mol, list):
+                    self.mol = [self.mol]
+            except Exception as e:
+                self.mol = None
+        else:
+            self.mol = [mm for mm in Chem.SDMolSupplier(self.db_name, removeHs=False) if mm]
 
         self.mode = args["mode"]
 
@@ -23,7 +32,10 @@ class main():
         self._default_basis = {"opt": "6-311G*", \
                                "sp": "def2TZVP"}
 
-        self.platform = args["platform"]
+        try:
+            self.platform = args["platform"]
+        except Exception as e:
+            self.platform = ''
 
         try:
             self.functional_opt = args["functional_opt"]
@@ -77,6 +89,12 @@ class main():
                 self.mem = 20
         
         try:
+            self.define_charge = args["define_charge"]
+        except Exception as e:
+            self.define_charge = None
+
+        
+        try:
             self.PJ_id = cc_agrs["project_id"]
         except Exception as e:
             self.PJ_id = ''
@@ -88,31 +106,44 @@ class main():
 
     
     def sanitize(self, rdmol_obj, prefix):
-        cc = Chem.SDWriter(f"TEMP_{prefix}.sdf")
-        cc.write(rdmol_obj)
-        cc.close()
-        ## detect if sanitize
-        re_rdmol_obj = Chem.RemoveHs(rdmol_obj)
-        if Chem.MolToSmiles(re_rdmol_obj) == Chem.MolToSmiles(rdmol_obj):
-            #need to add H
-            os.system(f"obabel -isdf TEMP_{prefix}.sdf -O TEMP_{prefix}_H.sdf -h")
+        try:
+            re_rdmol_obj = Chem.RemoveHs(rdmol_obj)
+        except Exception as e:
+            pass
+        
+        atom = [atom.GetSymbol() for atom in rdmol_obj.GetAtoms()]
+        re_atom = [atom.GetSymbol() for atom in re_rdmol_obj.GetAtoms()]
+
+        if len(atom) == len(re_atom):
+            if len([cc for cc in atom if "H" in cc]) > 1:
+                return rdmol_obj
+            else:
+                cc = Chem.SDWriter(f"TEMP_{prefix}.sdf")
+                cc.write(rdmol_obj)
+                cc.close()
+                os.system(f"obabel -isdf TEMP_{prefix}.sdf -O TEMP_{prefix}_H.sdf -h")
         else:
-            ## no need to add H
-            os.system(f"obabel -isdf TEMP_{prefix}.sdf -O TEMP_{prefix}_H.sdf")
+            return rdmol_obj
         
         if os.path.isfile(f"TEMP_{prefix}_H.sdf"):
             new_mol = [mmm for mmm in Chem.SDMolSupplier(f"TEMP_{prefix}_H.sdf", removeHs=False) if mmm][0]
             os.system("rm -f TEMP_*")
             return new_mol
         else:
-            loggging.info(f"Fail to get mol {prefix} in sdf database")
-            os.system("rm -f TEMP_*")
             return None
     
     def get_prop(self, rdmol_obj):
         atom = [atom.GetSymbol() for atom in rdmol_obj.GetAtoms()]
         xyz = rdmol_obj.GetConformer().GetPositions()
 
+        if self.define_charge:
+            try:
+                charge = int(self.define_charge)
+            except Exception as e:
+                pass
+            else:
+                return atom, xyz, int(charge)
+        
         AllChem.ComputeGasteigerCharges(rdmol_obj)
         _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in rdmol_obj.GetAtoms()])
 
@@ -167,7 +198,7 @@ class main():
             c.write("\n")
             c.write("\n")
     
-    def write_single_opt(self):
+    def write_single_opt(self, rdmol_obj, prefix):
         true_mol = self.sanitize(rdmol_obj, prefix)
         atom, xyz, charge = self.get_prop(true_mol)
 
@@ -199,7 +230,7 @@ class main():
             c.write("\n")
         return 
 
-    def write_single_sp(self):
+    def write_single_sp(self, rdmol_obj, prefix):
         true_mol = self.sanitize(rdmol_obj, prefix)
         atom, xyz, charge = self.get_prop(true_mol)
 
@@ -266,8 +297,12 @@ class main():
         
         return 
 
-    def run(self):
+    def run(self, **args):
         #work_dir = os.getcwd()
+        try:
+            define_prefix = args["prefix"]
+        except Exception as e:
+            define_prefix = None
 
         _dic_platform = {"local": self.setup_local, \
                     "lbg": self.setup_lbg}
@@ -278,26 +313,20 @@ class main():
 
         if self.mode not in [kk for kk in _dic_run.keys()]:
             loggging.info(f"No available runing mode, should choose from {[kk for kk in _dic_run.keys()]}")
-        
-        if self.platform == "lbg":
-            if not self.PJ_id:
-                logging.info("Please define project id in 'input.json' if you use lbg to run")
 
         for ii, mm in enumerate(self.mol):
-            this_prefix = f"{self.db_name.split('.')[0]}_{ii}"
+            if define_prefix:
+                this_prefix = f"{define_prefix}_{ii}"
+            else:
+                this_prefix = f"{self.db_name.split('.')[0]}_{ii}"
             _dic_run[self.mode](mm, this_prefix)
         
-        _dic_platform[self.platform]()
+        if self.platform:
+            if self.platform == "lbg":
+                if not self.PJ_id:
+                    logging.info("Please define project id in 'input.json' if you use lbg to run")
+            _dic_platform[self.platform]()
 
         return
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='process g16 run')
-    parser.add_argument('--input_sdf', type=str, required=True, help='input sdf file')
-    parser.add_argument('--mode', type=str, required=True, help='run type, could be [sp, opt, binary]')
-    parser.add_argument('--platform', type=str, required=True, help='platform of run, could be [local, lbg]')
-    args = parser.parse_args()
-
-    main(input_sdf=args.input_sdf, mode=args.mode, platform=args.platform).run()
 

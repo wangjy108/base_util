@@ -99,10 +99,16 @@ class main():
         except Exception as e:
             self.PJ_id = ''
         
+        self._default_machine_type = {16: "c16_m128_cpu", 
+                                      32: "c32_m256_cpu"}
+        
         try:
             self.machine_type = args["machine_type"]
         except Exception as e:
-            self.machine_type = 'c16_m128_cpu'
+            if self.nproc not in [cc for cc in self._default_machine_type.keys()]:
+                self.machine_type = 'c16_m128_cpu'
+            else:
+                self.machine_type = self._default_machine_type[self.nproc]
 
     
     def sanitize(self, rdmol_obj, prefix):

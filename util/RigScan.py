@@ -79,22 +79,7 @@ class main():
     def run_initial(self):
         ## initial opt and docking sp
         try:
-            G16(input_sdf=self._input, 
-                mode="opt", 
-                functional_opt=self.functional,
-                basis_opt=self.opt_basis, 
-                if_d3=self.if_d3, 
-                if_chk=self.if_chk,
-                define_charge=self.charge, 
-                nproc=self.nproc).run(prefix="opt")
-            G16(input_sdf=self._input, 
-                mode="sp", 
-                functional_sp=self.functional,
-                basis_sp=self.scan_basis, 
-                if_d3=self.if_d3, 
-                if_chk=self.if_chk,
-                define_charge=self.charge, 
-                nproc=self.nproc).run(prefix="sp")
+            input_mol = [cc for cc in Chem.SDMolSupplier(self._input, removeHs=False) if cc][0]
         except Exception as e:
             cmd = f"obabel -isdf {self._input} -O _TMEP_input.xyz"
             (_status, _out) = subprocess.getstatusoutput(cmd)
@@ -106,9 +91,9 @@ class main():
             except Exception as e:
                 logging.info("Terrible input file, check and run again")
                 return None
-            else:
-                if input_mol:
-                    G16(input_rdmol_obj=input_mol, 
+        
+        if input_mol:
+            G16(input_rdmol_obj=input_mol, 
                         mode="opt", 
                         functional_opt=self.functional,
                         basis_opt=self.opt_basis, 
@@ -116,7 +101,7 @@ class main():
                         if_chk=self.if_chk, 
                         define_charge=self.charge, 
                         nproc=self.nproc).run(prefix="opt")
-                    G16(input_rdmol_obj=input_mol, 
+            G16(input_rdmol_obj=input_mol, 
                         mode="sp", 
                         functional_sp=self.functional,
                         basis_sp=self.scan_basis, 
@@ -124,9 +109,9 @@ class main():
                         if_chk=self.if_chk, 
                         define_charge=self.charge, 
                         nproc=self.nproc).run(prefix="sp")
-                else:
-                    logging.info("Failed at generating initial input, check and run again")
-                    return None
+        else:
+            logging.info("Failed at generating initial input, check and run again")
+            return None
 
         run_file = [ff for ff in os.listdir() if "opt" in ff and ".gjf" in ff]
         run_done_log = []

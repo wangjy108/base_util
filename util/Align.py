@@ -62,7 +62,7 @@ class Align():
             return aligned_rdmolobj_search
 
         ## step2: perform align
-        cmd_flex_dic = {0: "LSalign TEMP_search.mol2 TEMP_ref.mol2 -rf 1 -o Aligned_search.pdb -acc 1",
+        cmd_flex_dic = {0: "LSalign TEMP_search.mol2 TEMP_ref.mol2 -rf 1 -o Aligned_search.pdb -acc 1 -H 1",
                         1: "grep 'QUE 88888' Aligned_search.pdb > Aligned_search_1.pdb",
                         2: "obabel -ipdb Aligned_search_1.pdb -O Aligned_search_1.sdf"}
 

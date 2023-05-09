@@ -56,7 +56,10 @@ class Align():
         (_out2, _status2) = subprocess.getstatusoutput(cmd_2)
         if not (_out1 == 0 and _out2 == 0):
             logging.info("Fail to generate mol2 file for ref or/and search, use other methods instead")
-            return None
+            rigid_align = self.align_by_crippen3D(mol_search, ref)
+            aligned_rdmolobj_search = rigid_align
+            os.system(f"rm -f Aligned_* TEMP_*")
+            return aligned_rdmolobj_search
 
         ## step2: perform align
         cmd_flex_dic = {0: "LSalign TEMP_search.mol2 TEMP_ref.mol2 -rf 1 -o Aligned_search.pdb -acc 1",

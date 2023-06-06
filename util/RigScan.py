@@ -209,7 +209,7 @@ class main():
             define_charge=self.charge, 
             nproc=self.nproc).run(prefix=get_this_sys_prefix)
         
-        run_file = [ff for ff in os.listdir() if (get_this_sys_prefix  or "sp" in ff) and ".gjf" in ff]
+        run_file = [ff for ff in os.listdir() if 'RigScan' in ff and ".gjf" in ff] + ["sp_0.gjf"]
         sp_run_done_log = []
         if run_file:
             for _job in run_file:

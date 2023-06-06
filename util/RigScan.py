@@ -281,7 +281,7 @@ class main():
         _log_dih = {}
         self.dih_param()
         for log in scan_done_log:
-            if "sp" not in log:
+            if "sp" not in log and "opt" not in log:
                 _prefix = log.split(".")[0]
                 with open(log, "r+") as ff:
                     content = [hh for hh in ff.readlines() if hh.strip()]
@@ -478,7 +478,7 @@ class main():
         ## there should be 2 param files
         _params = [pp for pp in os.listdir(".") if "_Param.log2dih" in pp]
         for log in scan_done_log:
-            if "sp" not in log:
+            if "sp" not in log and "opt" not in log:
                 _prefix = log.split(".")[0]
                 with open(log, "r+") as ff:
                     content = [hh for hh in ff.readlines() if hh.strip()]

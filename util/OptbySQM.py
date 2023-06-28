@@ -97,6 +97,14 @@ class System():
             except Exception as e:
                 self.energy_gap = 5.0
         
+        try:
+            self.HA_constrain = args["HA_constrain"]
+        except Exception as e:
+            self.HA_constrain = False
+        else:
+            if not isinstance(self.HA_constrain, bool):
+                self.HA_constrain = False
+        
         self.command_line = []
         ## prepare input xyz, sample from obabel tranformation
         for ii in range(len(self.mol)):
@@ -138,7 +146,23 @@ class System():
                 for idx, row in df.iterrows():
                     ff.write(f"{row['atom']:<3}{row['x']:>15.3f}{row['y']:>15.3f}{row['z']:>15.3f}\n")
             
-            self.command_line.append(f"xtb _input_{ii}.xyz --opt --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
+            if self.HA_constrain:
+                HA_atom_type = set(atom)
+                atom_line = "elements: "
+                for each in HA_atom_type:
+                    atom_line += f"{each},"
+
+                atom_line = atom_line[:-1]
+
+                with open(os.path.join(self.workdir, f"run_{ii}/_input_{ii}.inp"), "w+") as fff:
+                    fff.write("$fix\n")
+                    fff.write(f"\t{atom_line}\n")
+                    fff.write(f"$end\n")
+                    
+                self.command_line.append(f"xtb _input_{ii}.xyz --input _input_{ii}.inp --opt --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
+            
+            else:
+                self.command_line.append(f"xtb _input_{ii}.xyz --opt --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
             
     def run_set(self, sub_set:list):
         collect = {}

@@ -156,7 +156,7 @@ class System():
                 atom_line = atom_line[:-1]
 
                 with open(os.path.join(self.workdir, f"run_{ii}/_input_{ii}.inp"), "w+") as fff:
-                    fff.write("$fix\n")
+                    fff.write("$constrain\n")
                     fff.write(f"\t{atom_line}\n")
                     fff.write(f"$end\n")
 

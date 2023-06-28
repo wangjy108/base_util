@@ -160,16 +160,18 @@ class System():
                     fff.write(f"\t{atom_line}\n")
                     fff.write(f"$end\n")
 
-                self.command_line.append(f"xtb _input_{ii}.xyz --input _input_{ii}.inp --opt --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
+                self.command_line.append(f"xtb _input_{ii}.xyz --input _input_{ii}.inp --opt \
+                                          --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} --verbose > _log")
             
             else:
-                self.command_line.append(f"xtb _input_{ii}.xyz --opt --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
+                self.command_line.append(f"xtb _input_{ii}.xyz --opt \
+                                           --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} --verbose > _log")
             
     def run_set(self, sub_set:list):
         collect = {}
         for each in sub_set:
             real_idx = int(each.split()[1].split(".")[0].split("_")[-1])
-            get_charge = int(each.split()[-7])
+            get_charge = int(each.split()[-8])
             path = os.path.join(self.workdir, f"run_{real_idx}")
             os.chdir(path)
             (status, output) = subprocess.getstatusoutput(each)

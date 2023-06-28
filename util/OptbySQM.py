@@ -150,7 +150,8 @@ class System():
                 HA_atom_type = set(atom)
                 atom_line = "elements: "
                 for each in HA_atom_type:
-                    atom_line += f"{each},"
+                    if "H" not in each:
+                        atom_line += f"{each},"
 
                 atom_line = atom_line[:-1]
 
@@ -158,7 +159,7 @@ class System():
                     fff.write("$fix\n")
                     fff.write(f"\t{atom_line}\n")
                     fff.write(f"$end\n")
-                    
+
                 self.command_line.append(f"xtb _input_{ii}.xyz --input _input_{ii}.inp --opt --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} > _log")
             
             else:
@@ -168,7 +169,7 @@ class System():
         collect = {}
         for each in sub_set:
             real_idx = int(each.split()[1].split(".")[0].split("_")[-1])
-            get_charge = int(each.split()[4])
+            get_charge = int(each.split()[-7])
             path = os.path.join(self.workdir, f"run_{real_idx}")
             os.chdir(path)
             (status, output) = subprocess.getstatusoutput(each)

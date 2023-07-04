@@ -275,7 +275,7 @@ class main():
             cc.write("runfile=`ls *.gjf`\n")
             cc.write("for ff in ${runfile}\n")
             cc.write("do\n")
-            cc.write("\tname=`basename $ff`\n")
+            cc.write("\tname=`basename $ff .gjf`\n")
             cc.write("\tg16 < $ff > ${name}.log\n")
             cc.write("done\n")
         logging.info("Prepared for local run, run by 'nohup bash run.sh &' to start running")
@@ -283,7 +283,7 @@ class main():
 
     def setup_lbg(self):
         lbg_json = {
-            "job_name": "Flow_with_G16",
+            "job_name": "G16",
             "command": "bash run.sh",
             "log_file": "tmp_log",
             "backward_files": [],
@@ -293,7 +293,7 @@ class main():
             "disk_size": 128,
             "machine_type": self.machine_type,
             "job_type": "container",
-            "image_name": ""
+            "image_name": "registry.dp.tech/dptech/gaussian:16-avx2"
         }
 
         with open("input.json", "w+") as cc:

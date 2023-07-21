@@ -105,6 +105,11 @@ class System():
             if not isinstance(self.HA_constrain, bool):
                 self.HA_constrain = False
         
+        try:
+            charge = args["define_charge"]
+        except Exception as e:
+            charge = None
+        
         self.command_line = []
         ## prepare input xyz, sample from obabel tranformation
         for ii in range(len(self.mol)):
@@ -116,18 +121,21 @@ class System():
 
             ## get charge
             AllChem.ComputeGasteigerCharges(self.mol[ii])
-            _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol[ii].GetAtoms()])
+            if not charge:
+                _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol[ii].GetAtoms()])
 
-            if _charge:
-                charge_sign = _charge / abs(_charge)
+                if _charge:
+                    charge_sign = _charge / abs(_charge)
 
-                if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
-                    charge = math.ceil(abs(_charge)) * charge_sign
+                    if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
+                        charge = math.ceil(abs(_charge)) * charge_sign
+                    else:
+                        charge = (math.ceil(abs(_charge)) - 1)* charge_sign
+                
                 else:
-                    charge = (math.ceil(abs(_charge)) - 1)* charge_sign
-            
+                    charge = int(_charge)
             else:
-                charge = int(_charge)
+                charge = int(charge)
         
             ## save _input.xyz 
             df = pd.DataFrame({"atom": atom, \
@@ -256,6 +264,7 @@ class System():
             logging.info(f"xtb opt failed with {[kk for kk in dict_assemble.keys() if not dict_assemble[kk]]}th mol in input sdf db")
         
         standard_save = []
+        standard_charge = []
 
         ## sort optimized mol according to energy
         optimized = sorted([vv for vv in dict_assemble.values() if vv], key=lambda x:x[1])
@@ -291,6 +300,7 @@ class System():
             real_mol.SetProp("Energy_xtb", str(each[1]))
             real_mol.SetProp("_Name", each[2])
             real_mol.SetProp("charge", str(each[3]))
+            standard_charge.append(str(each[3]))
             real_idx = int(each[2].split("_")[-1])
 
             save_ori = Chem.SDWriter(f"_TEMP_ori_{real_idx}.sdf")
@@ -321,7 +331,7 @@ class System():
 
         logging.info(f"Optimized mol saved in {os.getcwd()}/_OPT.sdf")
 
-        return standard_save
+        return standard_save, standard_charge
                 
 
 if __name__ == "__main__":

@@ -56,6 +56,12 @@ class System():
                 self.run_temperature = 400
         
         try:
+            self.charge = args["define_charge"]
+        except Exception as e:
+            self.charge = None
+
+        
+        try:
             self.n_mpi = args["n_mpi"]
         except Exception as e:
             self.n_mpi = 16
@@ -80,19 +86,22 @@ class System():
 
         ## get charge
         AllChem.ComputeGasteigerCharges(self.mol)
-        _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol.GetAtoms()])
+        if not self.charge:
+            _charge = sum([float(atom.GetProp("_GasteigerCharge")) for atom in self.mol.GetAtoms()])
 
-        if _charge:
-            charge_sign = _charge / abs(_charge)
+            if _charge:
+                charge_sign = _charge / abs(_charge)
 
-            if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
-                charge = math.ceil(abs(_charge)) * charge_sign
+                if math.ceil(abs(_charge)) - abs(_charge) < 5e-1:
+                    charge = math.ceil(abs(_charge)) * charge_sign
+                else:
+                    charge = (math.ceil(abs(_charge)) - 1)* charge_sign
+                self.charge = int(charge)
+                
             else:
-                charge = (math.ceil(abs(_charge)) - 1)* charge_sign
-            self.charge = int(charge)
-            
+                self.charge = int(_charge)
         else:
-            self.charge = int(_charge)
+            self.charge = int(self.charge)
         
         ## save input.xyz for xtb-MD run
 
@@ -201,9 +210,9 @@ class System():
         os.system("rm -f sc* gfn* .xtb* xtbmdok *.log *.xyz md* _TEMP* _log")
 
         if _track == len(geom_idx):
-            os.system("rm -f xtb.trj")
+            os.system(f"rm -f {traj}")
         else:
-            logging.info("Not properly save, check 'xtb.trj' for all geom information")
+            logging.info(f"Not properly save, check '{traj}' for all geom information")
         
         return 
 

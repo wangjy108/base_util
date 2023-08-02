@@ -148,10 +148,10 @@ class System():
         xyz_ori = rdmolobj_ori.GetConformer().GetPositions()
         ## xyz_upt[-1][0]
         
-        upper_end_idx = [ii for ii in range(len(upt_content)) if "END" in upt_content[ii]][0]
+        upper_end_idx = [ii for ii in range(len(upt_content)) if upt_content[ii].strip().endswith("END")][-1]
         
-        middle_start_idx = [ii for ii in range(len(ori_content)) if ori_content[ii].strip().startswith(str(xyz_ori[-1][0]))][0] + 1
-        middle_end_idx = [ii for ii in range(len(ori_content)) if "END" in ori_content[ii]][0]
+        middle_start_idx = [ii for ii in range(len(ori_content)) if ori_content[ii].strip().startswith(str(xyz_ori[-1][0]))][-1] + 1
+        middle_end_idx = [ii for ii in range(len(ori_content)) if ori_content[ii].strip().endswith("END")][-1]
 
         header_replace_idx_upt = [ii for ii in range(len(upt_content)) \
                                 if upt_content[ii].strip().startswith(str(xyz_upt[0][0]))][0] -1

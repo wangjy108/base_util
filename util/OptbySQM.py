@@ -238,7 +238,7 @@ class System():
         ## direct get -1 may also cost invisible problems as one may include comments in the following contens
         upper_end_idx = [ii for ii in range(len(upt_content)) if upt_content[ii].strip().endswith("END")][-1]
         
-        middle_start_idx = [ii for ii in range(len(ori_content)) if ori_content[ii].strip().startswith(str(xyz_ori[-1][0]))][0] + 1
+        middle_start_idx = [ii for ii in range(len(ori_content)) if ori_content[ii].strip().startswith(str(xyz_ori[-1][0]))][-1] + 1
         middle_end_idx = [ii for ii in range(len(ori_content)) if ori_content[ii].strip().endswith("END")][-1]
 
         header_replace_idx_upt = [ii for ii in range(len(upt_content)) \

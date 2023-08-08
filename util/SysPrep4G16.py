@@ -95,7 +95,7 @@ class main():
 
         
         try:
-            self.PJ_id = cc_agrs["project_id"]
+            self.PJ_id = args["project_id"]
         except Exception as e:
             self.PJ_id = ''
         

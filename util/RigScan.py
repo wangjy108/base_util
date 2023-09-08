@@ -368,14 +368,17 @@ class main():
         minima = []
         maxima = []
 
+        #print(_log_dih_sort)
+
         i = 0
         while i < len(_log_dih_sort):
             current_scope = _log_dih_sort[i-1:i+2]
             if len(current_scope) < 3:
                 current_scope = _log_dih_sort[-1:] + _log_dih_sort[:i+2]
-                if len(current_scope) < 3:
+                if len(current_scope) > 3:
                     current_scope = _log_dih_sort[i-1:] + _log_dih_sort[:1]
                     
+            
             pair = [cc[-1][-1] for cc in current_scope]
             
             if max([vv for vv in dict(Counter(pair)).values()]) > 1:
@@ -387,8 +390,10 @@ class main():
                     minima.append(current_scope[1])
             i += 1
         
+        
         sort_minima = sorted(minima, key=lambda x: x[-1][-1])
         sort_maxima = sorted(maxima, key=lambda x: x[-1][-1])
+
 
         _track_words = ""
 

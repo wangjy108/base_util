@@ -180,23 +180,23 @@ class main():
             if not (_status == 0 and os.path.isfile("traj.xyz")):
                 logging.info("Failed at geometry rotation")
                 return 0
-            transform_cmd = "obabel -ixyz traj.xyz -O traj.sdf"
-            try:
-                (status, output) = subprocess.getstatusoutput(transform_cmd)
-            except Exception as e:
-                mol_set = self.transform_alternative("traj.xyz")
-            else:
-                if status == 0 and os.path.getsize("traj.sdf"):
-                    try:
-                        mol_set = [mm for mm in Chem.SDMolSupplier("traj.sdf", removeHs=False) if mm]
-                    except Exception as e:
-                        mol_set = self.transform_alternative("traj.xyz")
-                    else:
-                        if not mol_set:
-                            mol_set = self.transform_alternative("traj.xyz")
+            #transform_cmd = "obabel -ixyz traj.xyz -O traj.sdf"
+            #try:
+            #    (status, output) = subprocess.getstatusoutput(transform_cmd)
+            #except Exception as e:
+            #    mol_set = self.transform_alternative("traj.xyz")
+            #else:
+            #    if status == 0 and os.path.getsize("traj.sdf"):
+            #        try:
+            #            mol_set = [mm for mm in Chem.SDMolSupplier("traj.sdf", removeHs=False) if mm]
+            #        except Exception as e:
+            #            mol_set = self.transform_alternative("traj.xyz")
+            #        else:
+            #            if not mol_set:
+            #                mol_set = self.transform_alternative("traj.xyz")
 
-                else:
-                    mol_set = self.transform_alternative("traj.xyz")
+            #    else:
+            mol_set = self.transform_alternative("traj.xyz")
         
         ## generate sp gjf file
         get_this_sys_prefix = "RigScan"
@@ -264,7 +264,7 @@ class main():
             for line in this_xyz:
                 xyz_block += line
             
-            this_mol = rdmolfiles.MolFromXYZBlock(xyz_block)
+            this_mol = rdmolfiles.MolFromXYZBlock(xyz_block, removeHs=False)
             save.append(this_mol)
             _track += 1
         

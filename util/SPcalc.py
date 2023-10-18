@@ -74,6 +74,14 @@ class System():
             self.basis = '6-31G*'
         
         try:
+            self.if_D3 = args["if_D3"]
+        except Exception as e:
+            self.if_D3 = True
+        else:
+            if not isinstance(self.if_D3, bool):
+                self.if_D3 = True
+        
+        try:
             self.cpu_core = args["cpu_core"]
         except Exception as e:
             self.cpu_core = 16
@@ -158,10 +166,16 @@ class System():
             mol.spin = 0
             mol.build()
 
-            if not self.if_solvent:
-                mf = dftd3(dft.RKS(mol, xc=self.functional)) 
+            if not self.if_D3:
+                if not self.if_solvent:
+                    mf = dft.RKS(mol, xc=self.functional)
+                else:
+                    mf = solvent.ddCOSMO(dft.RKS(mol,xc=self.functional)) 
             else:
-                mf = solvent.ddCOSMO(dftd3(dft.RKS(mol,xc=self.functional)))
+                if not self.if_solvent:
+                    mf = dftd3(dft.RKS(mol, xc=self.functional))
+                else:
+                    mf = solvent.ddCOSMO(dftd3(dft.RKS(mol,xc=self.functional)))
 
             try:
                 e = mf.kernel()

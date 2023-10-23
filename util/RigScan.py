@@ -196,7 +196,7 @@ class main():
             #                mol_set = self.transform_alternative("traj.xyz")
 
             #    else:
-            mol_set = self.transform_alternative("traj.xyz")
+            self.transform_alternative("traj.xyz")
         
         ## generate sp gjf file
         #get_this_sys_prefix = "RigScan"
@@ -268,7 +268,7 @@ class main():
                 if self.if_chk:
                     cc.write(f"%chk=RigScan_{idx}.chk\n")
                 
-                cc.write(f"%mem={self.mem}GB\n")
+                cc.write(f"%mem=20GB\n")
                 cc.write(f"%nproc={self.nproc}\n")
 
                 if self.if_d3:
@@ -293,10 +293,10 @@ class main():
         if _track == len(geom_idx):
             os.system(f"rm -f {xyz_traj}")
             logging.info("Processing rotational points done")
-            return save
+            return
         else:
             logging.info(f"Not properly save, check '{xyz_traj}' for all geom information")
-            return 0
+            return
 
     def result_1D_scan(self, scan_done_log):
         ## should have some kind of _Param.log2dih

@@ -199,15 +199,15 @@ class main():
             mol_set = self.transform_alternative("traj.xyz")
         
         ## generate sp gjf file
-        get_this_sys_prefix = "RigScan"
-        G16(input_rdmol_obj=mol_set, 
-            mode="sp", 
-            functional_sp=self.functional, 
-            basis_sp=self.scan_basis, 
-            if_d3 = self.if_d3,
-            if_chk = self.if_chk, 
-            define_charge=self.charge, 
-            nproc=self.nproc).run(prefix=get_this_sys_prefix)
+        #get_this_sys_prefix = "RigScan"
+        #G16(input_rdmol_obj=mol_set, 
+        #    mode="sp", 
+        #    functional_sp=self.functional, 
+        #    basis_sp=self.scan_basis, 
+        #    if_d3 = self.if_d3,
+        #    if_chk = self.if_chk, 
+        #    define_charge=self.charge, 
+        #    nproc=self.nproc).run(prefix=get_this_sys_prefix)
         
         run_file = [ff for ff in os.listdir() if 'RigScan' in ff and ".gjf" in ff] + ["sp_0.gjf"]
         sp_run_done_log = []
@@ -260,18 +260,34 @@ class main():
             except Exception as e:
                 this_xyz = content[geom_idx[idx]:]
             
-            xyz_block = ""
-            for line in this_xyz:
-                xyz_block += line
+            #xyz_block = ""
+            #for line in this_xyz:
+            #    xyz_block += line
             
-            try:
-                this_mol = rdmolfiles.MolFromXYZBlock(xyz_block, removeHs=False)
-            except Exception as e:
-                logging.info("error when read in with xyz")
-            else:
-                if this_mol:
-                    save.append(this_mol)
-                    
+            with open(f"RigScan_{idx}.gjf", "w+") as cc:
+                if self.if_chk:
+                    cc.write(f"%chk=RigScan_{idx}.chk\n")
+                
+                cc.write(f"%mem={self.mem}GB\n")
+                cc.write(f"%nproc={self.nproc}\n")
+
+                if self.if_d3:
+                    cmd = f"# {self.functional}/{self.scan_basis} em=GD3BJ  nosymm \n"
+                else:
+                    cmd = f"# {self.functional}/{self.scan_basis} nosymm \n"
+                
+                cc.write(cmd)
+                cc.write("\n")
+                cc.write(f"opt RigScan_{idx}\n")
+                cc.write("\n")
+                cc.write(f"{self.charge} 1\n")
+
+                for line in this_xyz[2:]:
+                    cc.write(line)
+                
+                cc.write("\n")
+                cc.write("\n")
+
             _track += 1
         
         if _track == len(geom_idx):

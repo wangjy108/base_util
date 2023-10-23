@@ -264,8 +264,14 @@ class main():
             for line in this_xyz:
                 xyz_block += line
             
-            this_mol = rdmolfiles.MolFromXYZBlock(xyz_block, removeHs=False)
-            save.append(this_mol)
+            try:
+                this_mol = rdmolfiles.MolFromXYZBlock(xyz_block, removeHs=False)
+            except Exception as e:
+                logging.info("error when read in with xyz")
+            else:
+                if this_mol:
+                    save.append(this_mol)
+                    
             _track += 1
         
         if _track == len(geom_idx):

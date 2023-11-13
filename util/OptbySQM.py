@@ -165,7 +165,7 @@ class System():
 
                 with open(os.path.join(self.workdir, f"run_{ii}/_input_{ii}.inp"), "w+") as fff:
                     fff.write("$constrain\n")
-                    fff.write(f"\t{atom_line}\n")
+                    fff.write(f"{atom_line}\n")
                     fff.write(f"$end\n")
 
                 self.command_line.append(f"xtb _input_{ii}.xyz --input _input_{ii}.inp --opt \

@@ -19,156 +19,160 @@ import copy
 import scipy.spatial
 import logging
 import math
-from util.Align import *
-from util.CalRMSD import *
+from collections import Counter, defaultdict
+#from util.Align import *
+#from util.CalRMSD import *
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
 class cluster():
     def __init__(self, **args):
-        self.sdf_file = args["inputSDF_fileName"]
-        self.save_n = args["save_n"]
 
-        self.mol_set = [mm for mm in Chem.SDMolSupplier(self.sdf_file, removeHs=False) if mm != None]
-        ## extrac file Name
-        self.mol_name = self.sdf_file.strip().split("/")[-1]
-
-        self.avail_prop = [nn for nn in self.mol_set[0].GetPropNames()]
+        sample_mol_file_name = args["input_sdf"]
+        #initial_opt_file_name = args["input_opt"]
 
         try:
-            self.method = args["method"]
+            self.sample = [cc for cc in Chem.SDMolSupplier(sample_mol_file_name, removeHs=False) if cc]
         except Exception as e:
-            self.method = 'RMSD'
+            self.sample = None
+        
+        try:
+            self.k = args["cluster_n"]
+        except Exception as e:
+            self.k = None
         else:
-            if self.method != 'RMSD':
-                try:
-                    self.mol_set[0].GetProp(self.method)
-                except Exception as e:
-                    logging.info(f"Not valid method, use RMSD instead")
-                    self.method = 'RMSD'
-            
-        
-        try:
-            self.tag = args["name_tag"]
-        except Exception as e:
-            self.tag = "_Name"
-        
-        try:
-            self.align_method = args["align_method"]
-        except Exception as e:
-            self.align_method = "crippen3D"
+            if not isinstance(self.k, int):
+                self.k = None
 
         try:
-            self.rmsd_method = args["rmsd_method"]
+            self.distance_cutoff = args["rmsd_cutoff_cluster"]
         except Exception as e:
-            self.rmsd_method = "selfWhole" 
-        
-        try:
-            self.setReference = args["reference"]
-        except Exception as e:
-            self.setReference = 0
+            self.distance_cutoff = 1.5
         else:
-            try:
-                self.reference = [mm for mm in Chem.SDMolSupplier(self.setReference) if mm][0]
-            except Exception as e:
-                self.reference = None
+            if not isinstance(self.distance_cutoff, float):
+                self.distance_cutoff = 1.5
+        
+        try:
+            self.writer = args["if_write_cluster_mol"]
+        except Exception as e:
+            self.writer = False
 
-        self._path = os.getcwd()           
+        
+    def get_xyz(self, mol):
+        xyz = mol.GetConformer().GetPositions()
+        heavy_atom_fac = np.array([1 if atom.GetSymbol() != 'H' else 0 for atom in mol.GetAtoms()]).reshape(-1, 1)
+        xyz_heavy = np.multiply(xyz, heavy_atom_fac)
+        _xyz = np.delete(xyz_heavy, np.where(np.sum(xyz_heavy, axis=1)==0.0)[0], axis=0)
+        return _xyz
+    
+    def distance(self, ref_xyz, mol_xyz):
+        naive_rmsd = np.power(sum((np.power(np.sum((mol_xyz - ref_xyz)**2, axis=1), 0.5))**2)/mol_xyz.shape[0], 0.5)
+        return naive_rmsd
+        
+    def cluster(self):
+        if not self.sample:
+            logging.info("Error for input sampled mol file, terminated")
+            return None
             
+        #ref_xyz = self.get_xyz(self.ref)
+        sample_xyz = [self.get_xyz(mm) for mm in self.sample]
+
+        _list_saved_mol = [self.sample[0]]
+        _dic_saved_distance = {}
+
+        ## decrease redundancy
+        i = 1
+        while i < len(sample_xyz):
+            distance_compare = [self.distance(self.get_xyz(_list_saved_mol[ii]), sample_xyz[i]) for ii in range(len(_list_saved_mol))]
+            if min([cc for cc in distance_compare if cc > 0]) > self.distance_cutoff:
+                _list_saved_mol.append(self.sample[i])
+                tag = len(_list_saved_mol) - 1
+                _dic_saved_distance.setdefault(tag, distance_compare)
+
+            i += 1
+            
+        ## cluster
+
+        if self.k and len(_list_saved_mol) <= self.k:
+            return _list_saved_mol
+        
+        ## group by distance between mol and input ref
+        distance_matrix = np.zeros((len(_list_saved_mol), len(_list_saved_mol)))
+        for i in range(len(_list_saved_mol)):
+            distance_matrix[i][i] = 999.99
+            j = 0
+            while j < i:
+                distance_matrix[i][j] = distance_matrix[j][i] = _dic_saved_distance[i][j]
+                j += 1
+            
+        min_idx = np.argmin(distance_matrix, axis=1)
+        _cluster = defaultdict(int)
+        for idx, _min in enumerate(min_idx):
+            _cluster[idx] = _min
+
+        idx_count = Counter(min_idx)
+
+        clstr = defaultdict(list)
+
+        tracker = []
+        
+        for _pair in [ii for ii in idx_count.most_common() if ii[1] > 1]:
+            clstr[_pair[0]] = [kk for kk, vv in _cluster.items() if vv == _pair[0]]
+            tracker.append(_pair[0])
+            tracker += clstr[_pair[0]]
+
+        rare_events = []
+
+        for ii in range(len(min_idx)):
+            if ii not in tracker:
+                tag = _cluster[ii]
+                get_items = [(kk, vv) for kk, vv in clstr.items() if tag in vv]
+
+                if get_items:
+                    del clstr[get_items[0][0]]
+                    current_set = [get_items[0][0]] + get_items[0][1] + [ii]
+                    this_matrix = np.zeros((len(current_set), len(current_set)))
+                    for i in range(len(current_set)):
+                        this_matrix[i][i] = 0.0
+                        j = 0
+                        while j < i:
+                            this_matrix[i][j] = this_matrix[j][i] = distance_matrix[current_set[i]][current_set[j]]
+                            j += 1
+                    center = np.argmin(np.sum(this_matrix, axis=1))
+                    clstr[current_set[center]] = [nn for nn in current_set if nn != current_set[center]]
+                else:
+                    rare_events += [ii, tag]
+                    rare_events = list(set(rare_events))
+            
+            saved = [kk for kk, vv in clstr.items()] + rare_events
+                    
+            saved_mol = [_list_saved_mol[ii] for ii in set(saved)]
+            
+            return saved_mol
     
     def run(self):
-        try:
-            self.mol_set[0].GetProp(self.tag)
-        except Exception as e:
-            logging.info(f"Not valid property tag, current available property tags are: {self.avail_prop}")
-            logging.info("choose one from these properties and run again")
-            return 
+        collect = self.cluster()
+
+        if not collect:
+            logging.info("Error when save clustered mol, terminated")
+            return None
         
-        mol_collect = {}
-        for i in range(len(self.mol_set)):
-            constant_name = self.mol_set[i].GetProp(self.tag)
-            if not constant_name in mol_collect.keys():
-                mol_collect.setdefault(constant_name, [])
-            mol_collect[constant_name].append(self.mol_set[i])
+        if self.writer:
+            logging.info("Save each cluster center mol in FILTER_*.sdf")
+            for idx, mm in enumerate(collect):
+                cc = Chem.SDWriter(f"FILTER_{idx}.sdf")
+                cc.write(mm)
+                cc.close()
 
-        save = []
+        return collect
 
-        for k, v in mol_collect.items():
-            logging.info(f"Working with {k}")
-            if self.setReference and self.reference:
-                aligned_v = [Align(SearchMolObj=v[ii], RefMolObj=self.reference, method=self.align_method).run() for ii in range(len(v))]
-                sorted_by_rmsd = sorted([(RMSD(rdmolobj_mol=aligned_v[i], rdmolobj_ref=self.reference, method=self.rmsd_method).run(), aligned_v[i]) \
-                                for i in range(len(aligned_v))], key=lambda x:x[0])
-            else:
-                aligned_v = [Align(SearchMolObj=v[ii], RefMolObj=v[0], method=self.align_method).run() for ii in range(len(v))]
-                sorted_by_rmsd = sorted([(RMSD(rdmolobj_mol=aligned_v[i], rdmolobj_ref=aligned_v[0], method=self.rmsd_method).run(), aligned_v[i]) \
-                                    for i in range(len(aligned_v))], key=lambda x:x[0])
-            if len(v) > self.save_n and self.save_n > 1:
-                #rmsd_mol = sorted([align_by_3Dcrippen(v[i], v[0]) for i in range(len(v))], key=lambda x:x[0])
-                rmsd = [cc[0] for cc in sorted_by_rmsd]
-                #sorted(rmsd_mol, key=lambda x:x[0])
-                bins = np.linspace(min(rmsd), max(rmsd)+10e-6, self.save_n+1)
-                if bins[-1] > 1e10:
-                    bins[-1] = math.inf
-                
-                collect = {}
-                for i in range(self.save_n):
-                    collect.setdefault(i, [])
 
-                collect[0].append(sorted_by_rmsd[0][1])
-                #collect[n_cluster-1].append(rmsd_mol[-1][1])
 
-                i = 1
-                j = 1
-                while i <  len(v):
-                    item = sorted_by_rmsd[i]
-                    if item[0] < bins[j]:
-                        collect[j-1].append(item[1])
-                    else:
-                        j += 1
-                        collect[j-1].append(item[1])
-                    i += 1
 
-               
-                col_img = copy.deepcopy(collect)
-                for kk, vv in col_img.items():
-                    if len(vv) == 0:
-                        del collect[kk]
 
-                re_collect = sorted(list(collect.values()), key=lambda x:len(x), reverse=True)
 
-                for cc in re_collect:
-                    if self.method != "RMSD":
-                        cc.sort(key=lambda x:float(x.GetProp(self.method)), reverse=True)
-                    else:
-                        cc = cc[::-1]
 
-                current_save = []
 
-                while True:
-                    sel_from_which = self.save_n - len(current_save)
-                    if sel_from_which > 0:
-                        for ccc in re_collect[:sel_from_which]:
-                            if ccc:
-                                current_save.append(ccc.pop())
-                    else:
-                        break
-                save += current_save
-                #logging.info(f"collect as {[cc.GetProp('E_tot') for cc in current_save]}")
 
-            else:
-                save += [cc[-1] for cc in sorted_by_rmsd][:self.save_n]
-                #print(rmsd_mol)
-                    
-
-        ww = Chem.SDWriter(os.path.join(self._path, "FILTER.sdf"))
-        for cc in save:
-            #cSMILES = pairwise_IdTage_smi[cc.GetProp("_Name")]
-            #cc.SetProp("cSMILES", cSMILES)
-            ww.write(cc)
-        ww.close()
-
-        logging.info(f"Save in need molecules in FILTER.sdf in {self._path}")
-        return
 
     

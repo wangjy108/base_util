@@ -28,13 +28,21 @@ logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 class cluster():
     def __init__(self, **args):
 
-        sample_mol_file_name = args["input_sdf"]
-        #initial_opt_file_name = args["input_opt"]
-
         try:
-            self.sample = [cc for cc in Chem.SDMolSupplier(sample_mol_file_name, removeHs=False) if cc]
+            sample_mol_file_name = args["input_sdf"]
         except Exception as e:
             self.sample = None
+        else:
+            try:
+                self.sample = [cc for cc in Chem.SDMolSupplier(sample_mol_file_name, removeHs=False) if cc]
+            except Exception as e:
+                self.sample = None
+        
+        if not self.sample:
+            try:
+                self.sample = args["input_rdmol_obj"]
+            except Exception as e:
+                self.sample = None
         
         try:
             self.k = args["cluster_n"]

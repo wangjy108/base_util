@@ -20,7 +20,7 @@ import scipy.spatial
 import logging
 import math
 from collections import Counter, defaultdict
-#from util.Align import *
+from util.Align import Align
 #from util.CalRMSD import *
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
@@ -43,6 +43,11 @@ class cluster():
                 self.sample = args["input_rdmol_obj"]
             except Exception as e:
                 self.sample = None
+        
+        try:
+            self.do_align = args["do_align"]
+        except Exception as e:
+            self.do_align = False
         
         try:
             self.k = args["cluster_n"]
@@ -83,15 +88,25 @@ class cluster():
             return None
             
         #ref_xyz = self.get_xyz(self.ref)
-        sample_xyz = [self.get_xyz(mm) for mm in self.sample]
+        
+        sample_xyz = [self.get_xyz(self.sample[i]) for i in range(len(self.sample))]
 
         _list_saved_mol = [self.sample[0]]
         _dic_saved_distance = {}
 
         ## decrease redundancy
         i = 1
-        while i < len(sample_xyz):
-            distance_compare = [self.distance(self.get_xyz(_list_saved_mol[ii]), sample_xyz[i]) for ii in range(len(_list_saved_mol))]
+        while i < len(self.sample):
+            if self.do_align:
+                involved_saved_mol = [Align(SearchMolObj=_list_saved_mol[ii],
+                                            RefMolObj=self.sample[i],
+                                            method="crippen3D").run()
+                                        for ii in range(len(_list_saved_mol))]
+            else:
+                involved_saved_mol = _list_saved_mol
+            
+            distance_compare = [self.distance(self.get_xyz(involved_saved_mol[ii]), sample_xyz[i]) 
+                                for ii in range(len(involved_saved_mol))]
             if min([cc for cc in distance_compare if cc > 0]) > self.distance_cutoff:
                 _list_saved_mol.append(self.sample[i])
                 tag = len(_list_saved_mol) - 1

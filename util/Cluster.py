@@ -69,6 +69,11 @@ class cluster():
             self.writer = args["if_write_cluster_mol"]
         except Exception as e:
             self.writer = False
+        
+        try:
+            self.only_reduce_duplicate = args["only_reduce_duplicate"]
+        except Exception as e:
+            self.only_reduce_duplicate = False
 
         
     def get_xyz(self, mol):
@@ -115,6 +120,8 @@ class cluster():
             i += 1
             
         ## cluster
+        if self.only_reduce_duplicate:
+            return _list_saved_mol
 
         if self.k and len(_list_saved_mol) <= self.k:
             return _list_saved_mol

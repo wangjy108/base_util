@@ -18,6 +18,7 @@ import math
 import subprocess
 from joblib import Parallel, delayed
 from util.CalRMSD import *
+from util.Cluster import cluster
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
@@ -31,10 +32,17 @@ class System():
         try:
             self.mol = [mm for mm in Chem.SDMolSupplier(args["input_sdf"], removeHs=False) if mm]
         except Exception as e:
-            logging.info("Wrong input, check and run again")
+            #logging.info("Wrong input, check and run again")
             self.mol = None
         
-        self.db_prefix = args["input_sdf"].split(".")[0]
+        if not self.mol:
+            try:
+                self.mol = args["input_rdmol_obj"]
+            except Exception as e:
+                self.mol = None
+        
+        #self.db_prefix = args["input_sdf"].split(".")[0]
+        self.db_prefix = "OPT"
 
         self.workdir = os.getcwd()
 
@@ -78,7 +86,13 @@ class System():
                 self.rmsd_cutoff = float(self.rmsd_cutoff)
             except Exception as e:
                 self.rmsd_cutoff = 1.0
-            
+        
+        try:
+            self.save_n = args["save_n"]
+        except Exception as e:
+            self.save_n = None
+
+        """    
         try:
             self.qm_opt = args["qm_opt"]
         except Exception as e:
@@ -86,16 +100,7 @@ class System():
         else:
             if not isinstance(self.qm_opt, bool):
                 self.qm_opt = False
-        
-        try:
-            self.energy_gap = args["energy_gap"]
-        except Exception as e:
-            self.energy_gap = 5.0
-        else:
-            try:
-                self.energy_gap = float(self.energy_gap)
-            except Exception as e:
-                self.energy_gap = 5.0
+        """
         
         try:
             self.HA_constrain = args["HA_constrain"]
@@ -109,6 +114,11 @@ class System():
             charge = args["define_charge"]
         except Exception as e:
             charge = None
+        
+        try:
+            self.if_write_sdf = args["if_write_sdf"]
+        except Exception as e:
+            self.if_write_sdf = False
         
         self.command_line = []
         ## prepare input xyz, sample from obabel tranformation
@@ -267,48 +277,43 @@ class System():
         standard_save = []
         standard_charge = []
 
-        ## sort optimized mol according to energy
-        optimized = sorted([vv for vv in dict_assemble.values() if vv], key=lambda x:x[1])
-        if not self.qm_opt:
-            ## standar sdf
-            save = optimized[:1]
-            
+        ## do cluster
+        before_cluster = []
+        for kk, vv in dict_assemble.items():
+            if vv:
+                vv[0].SetProp("Energy_xtb", str(vv[1]))
+                vv[0].SetProp("_Name", vv[2])
+                vv[0].SetProp("charge", str(vv[3]))
+                before_cluster.append(vv[0])
+        
+        if len(before_cluster) > 1:
+            ## reduce_duplicate
+            after_cluster = cluster(input_rdmol_obj=before_cluster,
+                                    rmsd_cutoff_cluster=self.rmsd_cutoff,
+                                    do_align=True,
+                                    only_reduce_duplicate=True).run()
         else:
-            energy_range = [x[1] for x in optimized]
-            energy_range_standarized = [(cc - min(energy_range))*627.51 for cc in energy_range]
-            if max(energy_range_standarized) < self.energy_gap:
-                for_align = optimized
-            else:
-                ii = 1
-                for_align = optimized[:1]
-                while ii < len(optimized):
-                    if energy_range_standarized[ii] >= self.energy_gap:
-                        break
-                    else:
-                        ii += 1
-                for_align += optimized[1:ii]
-            
-            ## do align and remove those with rmsd less than self.rmsd_cutoff
-            
-            save = for_align[:1]
-            for ii in range(len(for_align)):
-                compare_rmsd = [RMSD(rdmolobj_mol=for_align[ii][0],rdmolobj_ref=save[cc][0], method="selfWhole").run() for cc in range(len(save))]
-                if min(compare_rmsd) > self.rmsd_cutoff:
-                    save.append(for_align[ii])
-            
-        for each in save:
-            real_mol = each[0]
-            real_mol.SetProp("Energy_xtb", str(each[1]))
-            real_mol.SetProp("_Name", each[2])
-            real_mol.SetProp("charge", str(each[3]))
-            standard_charge.append(str(each[3]))
-            real_idx = int(each[2].split("_")[-1])
+            after_cluster = before_cluster
+
+        optimized = sorted([mm for mm in after_cluster], key=lambda x:float(x.GetProp("Energy_xtb")))
+
+        if not self.save_n:
+            return optimized
+        
+        return optimized[:self.save_n]
+    
+    def run(self):
+        out_put = []
+        optmized = self.run_process()
+
+        for each in optmized:
+            real_idx = int(each.GetProp("_Name").split("_")[-1])
 
             save_ori = Chem.SDWriter(f"_TEMP_ori_{real_idx}.sdf")
             save_ori.write(self.mol[real_idx])
             save_ori.close()
             save_upt = Chem.SDWriter(f"_TEMP_upt_{real_idx}.sdf") 
-            save_upt.write(real_mol)
+            save_upt.write(each)
             save_upt.close()
 
             self.shift_sdf(original_sdf=f"_TEMP_ori_{real_idx}.sdf", \
@@ -318,26 +323,21 @@ class System():
             try:
                 standard_real_mol = [mm for mm in Chem.SDMolSupplier(f"_TEMP_opt_{real_idx}.sdf", removeHs=False) if mm][0]
             except Exception as e:
-                standard_save.append(real_mol)
+                out_put.append(each)
             else:
-                standard_save.append(standard_real_mol)
+                out_put.append(standard_real_mol)
             
-            
-        final_cc = Chem.SDWriter("_OPT.sdf")
-        for mol in standard_save:
-            final_cc.write(mol)
-        final_cc.close()
+        if self.if_write_sdf:
+            final_cc = Chem.SDWriter("_OPT.sdf")
+            for mol in out_put:
+                final_cc.write(mol)
+            final_cc.close()
+            logging.info(f"Optimized mol saved in {os.getcwd()}/_OPT.sdf")
 
         os.system("rm -f _TEMP*")
 
-        logging.info(f"Optimized mol saved in {os.getcwd()}/_OPT.sdf")
+        return out_put
 
-        return standard_save, standard_charge
-                
-
-if __name__ == "__main__":
-    sys = System(input_sdf="Ligs.sdf")
-    get = sys.run_process()
                 
 
 

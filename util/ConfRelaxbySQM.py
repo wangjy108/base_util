@@ -50,6 +50,8 @@ class System():
         except Exception as e:
             self.save_frame = 100
 
+        ## should be flexible for sampling
+
         try:
             self.dump = args["dump_frequency"]
         except Exception as e:

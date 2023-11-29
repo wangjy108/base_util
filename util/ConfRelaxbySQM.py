@@ -34,16 +34,6 @@ class System():
         
         with open(args["input_sdf"], "r+") as f1:
             self.ori_content = [ff for ff in f1.readlines()]
-
-        try:
-            self.run_time = args["run_time"]
-        except Exception as e:
-            self.run_time = 50
-        else:
-            try:
-                self.run_time = float(self.run_time)
-            except Exception as e:
-                self.run_time = 50
         
         try:
             self.run_temperature = args["run_temperature"]
@@ -55,6 +45,26 @@ class System():
             except Exception as e:
                 self.run_temperature = 400
         
+        try:
+            self.save_frame = int(args["save_frame"])
+        except Exception as e:
+            self.save_frame = 100
+
+        try:
+            self.dump = args["dump_frequency"]
+        except Exception as e:
+            self.dump = 300
+
+        try:
+            self.run_time = args["run_time"]
+        except Exception as e:
+            self.run_time = self.dump * self.save_frame / 1000 
+        else:
+            try:
+                self.run_time = float(self.run_time)
+            except Exception as e:
+                self.run_time = 50
+
         try:
             self.charge = args["define_charge"]
         except Exception as e:
@@ -73,12 +83,8 @@ class System():
         
         ## default saving frame should be less than 1000
         #self.dump = int(self.run_time)
-        try:
-            self.save_frame = int(args["save_frame"])
-        except Exception as e:
-            self.save_frame = 100
+        
 
-        self.dump = int(self.run_time * 1000 / self.save_frame)
         
         ## prepare input xyz, sample from obabel tranformation
         self.atom = [atom.GetSymbol() for atom in self.mol.GetAtoms()]

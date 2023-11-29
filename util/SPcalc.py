@@ -29,7 +29,7 @@ class System():
         try:
             self.mol = [mm for mm in Chem.SDMolSupplier(args["input_sdf"], removeHs=False) if mm]
         except Exception as e:
-            logging.info("Wrong input, check and run again")
+            #logging.info("Wrong input, check and run again")
             self.mol = None
         
         if not self.mol:

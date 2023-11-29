@@ -32,6 +32,12 @@ class System():
             logging.info("Wrong input, check and run again")
             self.mol = None
         
+        if not self.mol:
+            try:
+                self.mol = args["input_rdmol_obj"]
+            except Exception as e:
+                self.mol = None
+        
         #self.method = args["method"]
         try:
             self.verbose = args["verbose"]

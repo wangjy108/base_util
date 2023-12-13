@@ -284,7 +284,26 @@ class System():
                 vv[0].SetProp("Energy_xtb", str(vv[1]))
                 vv[0].SetProp("_Name", vv[2])
                 vv[0].SetProp("charge", str(vv[3]))
-                before_cluster.append(vv[0])
+
+                real_idx = int(vv[2].split("_")[-1])
+                save_ori = Chem.SDWriter(f"_TEMP_ori_{real_idx}.sdf")
+                save_ori.write(self.mol[real_idx])
+                save_ori.close()
+
+                save_upt = Chem.SDWriter(f"_TEMP_upt_{real_idx}.sdf") 
+                save_upt.write(vv[0])
+                save_upt.close()
+
+                self.shift_sdf(original_sdf=f"_TEMP_ori_{real_idx}.sdf", \
+                            update_sdf=f"_TEMP_upt_{real_idx}.sdf", \
+                            save_prefix=f"_TEMP_opt_{real_idx}")
+                
+                try:
+                    standard_real_mol = [mm for mm in Chem.SDMolSupplier(f"_TEMP_opt_{real_idx}.sdf", removeHs=False) if mm][0]
+                except Exception as e:
+                    before_cluster.append(vv[0])
+                else:
+                    before_cluster.append(standard_real_mol)
         
         if len(before_cluster) > 1:
             ## reduce_duplicate
@@ -303,40 +322,18 @@ class System():
         return optimized[:self.save_n]
     
     def run(self):
-        out_put = []
         optmized = self.run_process()
-
-        for each in optmized:
-            real_idx = int(each.GetProp("_Name").split("_")[-1])
-
-            save_ori = Chem.SDWriter(f"_TEMP_ori_{real_idx}.sdf")
-            save_ori.write(self.mol[real_idx])
-            save_ori.close()
-            save_upt = Chem.SDWriter(f"_TEMP_upt_{real_idx}.sdf") 
-            save_upt.write(each)
-            save_upt.close()
-
-            self.shift_sdf(original_sdf=f"_TEMP_ori_{real_idx}.sdf", \
-                           update_sdf=f"_TEMP_upt_{real_idx}.sdf", \
-                           save_prefix=f"_TEMP_opt_{real_idx}")
-
-            try:
-                standard_real_mol = [mm for mm in Chem.SDMolSupplier(f"_TEMP_opt_{real_idx}.sdf", removeHs=False) if mm][0]
-            except Exception as e:
-                out_put.append(each)
-            else:
-                out_put.append(standard_real_mol)
             
         if self.if_write_sdf:
             final_cc = Chem.SDWriter("_OPT.sdf")
-            for mol in out_put:
+            for mol in optmized:
                 final_cc.write(mol)
             final_cc.close()
             logging.info(f"Optimized mol saved in {os.getcwd()}/_OPT.sdf")
 
         os.system("rm -f _TEMP*")
 
-        return out_put
+        return optmized
 
                 
 

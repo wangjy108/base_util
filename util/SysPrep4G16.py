@@ -318,7 +318,7 @@ class main():
                     "sp": self.write_single_sp}
 
         if self.mode not in [kk for kk in _dic_run.keys()]:
-            loggging.info(f"No available runing mode, should choose from {[kk for kk in _dic_run.keys()]}")
+            logging.info(f"No available runing mode, should choose from {[kk for kk in _dic_run.keys()]}")
 
         for ii, mm in enumerate(self.mol):
             if define_prefix:

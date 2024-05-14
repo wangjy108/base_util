@@ -72,6 +72,11 @@ class System():
         except Exception as e:
             self.charge = None
 
+        try:
+            self.solvation = args["solvation"]
+        except Exception as e:
+            self.solvation = 'water'
+
         
         try:
             self.n_mpi = args["n_mpi"]
@@ -226,7 +231,7 @@ class System():
 
     def run(self):
         os.system(f"export OMP_NUM_THREADS={self.n_mpi}")
-        command = f"xtb _input.xyz --input md.inp --chrg {self.charge} --omd --gfnff > _log"
+        command = f"xtb _input.xyz --input md.inp --chrg {self.charge} --omd --gfnff --alpb {self.solvation} > _log"
         logging.info(f"run command: {command}")
         (status, output) = subprocess.getstatusoutput(command)
 

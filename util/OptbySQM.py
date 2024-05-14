@@ -65,7 +65,7 @@ class System():
         try:
             self.solvation = args["solvation"]
         except Exception as e:
-            self.solvation = 'h2o'
+            self.solvation = 'water'
         
         try:
             self.cpu_core = args["cpu_core"]
@@ -179,11 +179,11 @@ class System():
                     fff.write(f"$end\n")
 
                 self.command_line.append(f"xtb _input_{ii}.xyz --input _input_{ii}.inp --opt \
-                                          --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} --verbose > _log")
+                                          --chrg {int(charge)} --gfn {self.gfn_option} --alpb {self.solvation} --verbose > _log")
             
             else:
                 self.command_line.append(f"xtb _input_{ii}.xyz --opt \
-                                           --chrg {int(charge)} --gfn {self.gfn_option} --gbsa {self.solvation} --verbose > _log")
+                                           --chrg {int(charge)} --gfn {self.gfn_option} --alpb {self.solvation} --verbose > _log")
             
     def run_set(self, sub_set:list):
         collect = {}
@@ -306,20 +306,20 @@ class System():
                     before_cluster.append(standard_real_mol)
         
         if len(before_cluster) > 1:
+            optimized = sorted([mm for mm in before_cluster], key=lambda x:float(x.GetProp("Energy_xtb")))
             ## reduce_duplicate
-            after_cluster = cluster(input_rdmol_obj=before_cluster,
+            after_cluster = cluster(input_rdmol_obj=optimized,
                                     rmsd_cutoff_cluster=self.rmsd_cutoff,
                                     do_align=True,
                                     only_reduce_duplicate=True).run()
         else:
             after_cluster = before_cluster
 
-        optimized = sorted([mm for mm in after_cluster], key=lambda x:float(x.GetProp("Energy_xtb")))
 
         if not self.save_n:
-            return optimized
+            return after_cluster
         
-        return optimized[:self.save_n]
+        return after_cluster[:self.save_n]
     
     def run(self):
         optmized = self.run_process()

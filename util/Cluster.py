@@ -84,7 +84,12 @@ class cluster():
         return _xyz
     
     def distance(self, ref_xyz, mol_xyz):
-        naive_rmsd = np.power(sum((np.power(np.sum((mol_xyz - ref_xyz)**2, axis=1), 0.5))**2)/mol_xyz.shape[0], 0.5)
+        ## should be some kind of conformer shift, and these shift should not include well aligned atoms
+        #naive_rmsd = np.power(sum((np.power(np.sum((mol_xyz - ref_xyz)**2, axis=1), 0.5))**2)/mol_xyz.shape[0], 0.5)
+        shifted = np.power(np.sum((mol_xyz - ref_xyz)**2, axis=1), 0.5)
+        shifted = np.array([cc for cc in shifted.flatten() if cc > 0.1])
+        naive_rmsd = np.sum((shifted**2 / shifted.shape[0])) ** 0.5
+
         return naive_rmsd
         
     def cluster(self):

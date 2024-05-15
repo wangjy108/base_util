@@ -88,7 +88,11 @@ class cluster():
         #naive_rmsd = np.power(sum((np.power(np.sum((mol_xyz - ref_xyz)**2, axis=1), 0.5))**2)/mol_xyz.shape[0], 0.5)
         shifted = np.power(np.sum((mol_xyz - ref_xyz)**2, axis=1), 0.5)
         shifted = np.array([cc for cc in shifted.flatten() if cc > 0.1])
-        naive_rmsd = np.sum((shifted**2 / shifted.shape[0])) ** 0.5
+        
+        if shifted.shape[0] and shifted.shape[0] > 2:
+            naive_rmsd = np.sum((shifted**2 / shifted.shape[0])) ** 0.5
+        else:
+            naive_rmsd = 0
 
         return naive_rmsd
         
@@ -117,7 +121,9 @@ class cluster():
             
             distance_compare = [self.distance(self.get_xyz(involved_saved_mol[ii]), sample_xyz[i]) 
                                 for ii in range(len(involved_saved_mol))]
-            if min([cc for cc in distance_compare if cc > 0]) > self.distance_cutoff:
+            #logging.info(distance_compare)
+
+            if min([cc for cc in distance_compare]) > self.distance_cutoff:
                 _list_saved_mol.append(self.sample[i])
                 tag = len(_list_saved_mol) - 1
                 _dic_saved_distance.setdefault(tag, distance_compare)

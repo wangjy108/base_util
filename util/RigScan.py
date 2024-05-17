@@ -10,6 +10,7 @@ import configparser
 import logging
 from rdkit import Chem
 from rdkit.Chem import rdmolfiles, rdMolTransforms
+from multiprocessing import cpu_count
 
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline
@@ -19,6 +20,7 @@ import subprocess
 from collections import Counter
 
 from util.SysPrep4G16 import main as G16
+from util.OptbySQM import System as sysopt
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
@@ -26,57 +28,105 @@ class main():
     def __init__(self, **args):
         param_config = args["config"]
         self._input = args["input_sdf"] ## initial sdf
+
+        self.prefix = ".".join(self._input.split(".")[:-1])
+
+        try:
+            self.input_mol = [cc for cc in Chem.SDMolSupplier(self._input, removeHs=False) if cc]
+        except Exception as e:
+            self.input_mol = None
+        else:
+            self.input_mol = self.input_mol[:1]
+        
+
         #self.prefix = _input.split(".")[0]
 
         config = configparser.ConfigParser()
         config.read(param_config)
-        general = config["general"]
+        general = config["DIH"]
         
-        self.qm_opt_engine = general["QM_OPT_ENGINE"]
-        self.qm_scan_engine = general["QM_SCAN_ENGINE"]
-        self.charge = general["CHARGE"]
-        self.spin = int(general["SPIN"])
-        self.bond1 = str(general["BOND_1"])
-        self.rotable_angle1 = int(general["ROTATE_ANGlE_1"])
-        self.rotable_terval1 = int(general["TERVAL_1"])
+        #self.qm_opt_engine = general["qm_opt_engine"]
+        self.qm_scan_engine = general["qm_scan_engine"]
+        self.charge = general["charge"]
+        self.spin = int(general["charge"])
+        self.bond1 = str(general["bond_1"])
+        self.rotable_angle1 = int(general["rotate_angle_1"])
+        self.rotable_terval1 = int(general["terval_1"])
         try:
-            self.bond2 = str(general["BOND_2"])
+            self.bond2 = str(general["bond_2"])
         except Exception as e:
             self.bond2 = None
         else:
             if self.bond2:
                 try:
-                    self.rotable_angle2 = int(args["ROTATE_ANGlE_2"])
+                    self.rotable_angle2 = int(args["rotate_angle_2"])
                 except Exception as e:
                     self.rotable_angle2 = self.rotable_angle1
                 
                 try:
-                    self.rotable_terval2 = int(args["TERVAL_2"])
+                    self.rotable_terval2 = int(args["terval_2"])
                 except Exception as e:
                     self.rotable_terval2 = self.rotable_terval1
                 
             else:
                 self.bond2 = None
  
-        self.functional = general["FUNCTIONAL"]
+        self.functional = general["functional"]
         
         self.if_d3 = bool(int(general["D3"]))
         
-        self.opt_basis = general["OPT_BASIS"]
-        self.scan_basis = general["SCAN_BASIS"]
+        #self.opt_basis = general["opt_basis"]
+        self.scan_basis = general["scan_basis"]
         #self.run_base = general["RUN_BASE"]
         
-        self.if_chk = bool(int(general["CHK"]))
+        self.if_chk = bool(int(general["chk"]))
 
-        run_config = config["run_config"]
+        self.verbose = bool(int(config["DEBUG"]["verbose"]))
 
-        try:
-            self.nproc = int(run_config["NPROC"])
-        except Exception as e:
-            self.nproc = 32
+        self.nproc = int(cpu_count())
+
+        self.work_dir = os.getcwd()
+    
+    def get_conservative_xyz(self, rdmol_obj_each):
+        atom = [atom.GetSymbol() for atom in rdmol_obj_each.GetAtoms()]
+        xyz = rdmol_obj_each.GetConformer().GetPositions()
+
+        df = pd.DataFrame({"atom": atom, \
+                            "x": xyz[:, 0], \
+                            "y": xyz[:, 1], \
+                            "z": xyz[:, 2]})
         
+        xyz_block = ""
+        xyz_block += f"{xyz.shape[0]}\n"
+        xyz_block += f"{self.prefix}\n"
+            
+        for idx, row in df.iterrows():
+            xyz_block += f"{row['atom']:<3}{row['x']:>15.3f}{row['y']:>15.3f}{row['z']:>15.3f}\n"
+        
+        return xyz_block
     
     def run_initial(self):
+        if not self.input_mol:
+            logging.info("Bad input, nothing to calc, abort")
+            return None
+        
+        _initial_opt = sysopt(input_rdmol_obj=self.input_mol,
+                              define_charge=self.charge,
+                              HA_constrain=True).run()
+        #self.charge = _initial_opt[0].GetProp("charge")
+
+        if not _initial_opt:
+            logging.info("Failed at initial opt, abort")
+            return None
+
+        opt_writer = Chem.SDWriter(f"{self.prefix}.opt.sdf")
+        opt_writer.write(_initial_opt[0])
+        opt_writer.close()
+
+        return _initial_opt
+
+    
+    def run_initial_old(self):
         ## initial opt and docking sp
         try:
             input_mol = [cc for cc in Chem.SDMolSupplier(self._input, removeHs=False) if cc][0]
@@ -96,7 +146,7 @@ class main():
             G16(input_rdmol_obj=input_mol, 
                         mode="opt", 
                         functional_opt=self.functional,
-                        basis_opt=self.opt_basis, 
+                        #basis_opt=self.opt_basis, 
                         if_d3=self.if_d3, 
                         if_chk=self.if_chk, 
                         define_charge=self.charge, 
@@ -135,51 +185,53 @@ class main():
         
         return run_done_log
 
-    def run_rotation(self, opt_run_done_log):
+    def run_rotation(self):
         ## do gentor scan
         ## get xyz block from log
-        opt_log = [ll for ll in opt_run_done_log][0]
-        _out = opt_log.split(".")[0]
-        cmd = f"obabel -ig16 {opt_log} -O xyz"
-        try:
-            (status, output) = subprocess.getstatusoutput(cmd)
-        except Exception as e:
-            logging.info("Failed at get xyz block from g16 run_done file")
-            return 0
-        if status == 0:
-            if os.path.isfile("xyz") and os.path.getsize("xyz"):
+        #opt_log = [ll for ll in opt_run_done_log][0]
+        #_out = opt_log.split(".")[0]
+        #cmd = f"obabel -ig16 {opt_log} -O xyz"
+        #try:
+        #    (status, output) = subprocess.getstatusoutput(cmd)
+        #except Exception as e:
+        #    logging.info("Failed at get xyz block from g16 run_done file")
+        #    return 0
+        #if status == 0:
+         #   if os.path.isfile("xyz") and os.path.getsize("xyz"):
                 ## run gentor to get trj file
-                with open("gentor.ini", "w+") as cc:
-                    simplified_bond1="-".join(self.bond1.strip().split(",")[1:3])
-                    cc.write(simplified_bond1 + "\n")
-                    if self.rotable_angle1 != 360:
-                        write_terval1 = f"e{self.rotable_terval1} 0 {self.rotable_angle1}\n"
-                    else:
-                        write_terval1 = f"e{self.rotable_terval1}\n"
-                    cc.write(write_terval1)
-                    if self.bond2:
-                        simplified_bond2="-".join(self.bond2.strip().split(",")[1:3])
-                        if simplified_bond2 != simplified_bond1:
-                            logging.info("Double scan mode")
-                            cc.write(simplified_bond2 + "\n")
+        
+        ## required xyz file name as xyz
+        with open(os.path.join(self.work_dir, "gentor.ini"), "w+") as cc:
+            simplified_bond1="-".join(self.bond1.strip().split(",")[1:3])
+            cc.write(simplified_bond1 + "\n")
+            if self.rotable_angle1 != 360:
+                write_terval1 = f"e{self.rotable_terval1} 0 {self.rotable_angle1}\n"
+            else:
+                write_terval1 = f"e{self.rotable_terval1}\n"
+            cc.write(write_terval1)
+            if self.bond2:
+                simplified_bond2="-".join(self.bond2.strip().split(",")[1:3])
+                if simplified_bond2 != simplified_bond1:
+                    logging.info("Double scan mode")
+                    cc.write(simplified_bond2 + "\n")
 
-                            if self.rotable_angle2 != 360:
-                                write_terval2 = f"e{self.rotable_terval2} 0 {self.rotable_angle2}\n"
-                            else:
-                                write_terval2 = f"e{self.rotable_terval2}\n"
-                                
-                            cc.write(write_terval2 + "\n")
+                    if self.rotable_angle2 != 360:
+                        write_terval2 = f"e{self.rotable_terval2} 0 {self.rotable_angle2}\n"
+                    else:
+                        write_terval2 = f"e{self.rotable_terval2}\n"
+                        
+                    cc.write(write_terval2 + "\n")
 
         scan_gen_cmd = f"run_gentor"
         try:
             (_status, _output) = subprocess.getstatusoutput(scan_gen_cmd)
         except Exception as e:
-            logging.info("Failed at geometry rotation")
-            return 0
+            logging.info("Failed at geometry rotation, abort")
+            return None
         else:
-            if not (_status == 0 and os.path.isfile("traj.xyz")):
-                logging.info("Failed at geometry rotation")
-                return 0
+            if not (os.path.isfile("traj.xyz") and os.path.getsize("traj.xyz")):
+                logging.info("Failed at geometry rotation, abort")
+                return None
             #transform_cmd = "obabel -ixyz traj.xyz -O traj.sdf"
             #try:
             #    (status, output) = subprocess.getstatusoutput(transform_cmd)
@@ -196,27 +248,30 @@ class main():
             #                mol_set = self.transform_alternative("traj.xyz")
 
             #    else:
-            self.transform_alternative("traj.xyz")
+            mol_set = self.update_xyz_in_sdf("traj.xyz", f"{self.prefix}.opt.sdf")
         
         ## generate sp gjf file
-        #get_this_sys_prefix = "RigScan"
-        #G16(input_rdmol_obj=mol_set, 
-        #    mode="sp", 
-        #    functional_sp=self.functional, 
-        #    basis_sp=self.scan_basis, 
-        #    if_d3 = self.if_d3,
-        #    if_chk = self.if_chk, 
-        #    define_charge=self.charge, 
-        #    nproc=self.nproc).run(prefix=get_this_sys_prefix)
+        get_this_sys_prefix = "RigScan"
+        G16(input_rdmol_obj=mol_set, 
+            mode="sp", 
+            functional_sp=self.functional, 
+            basis_sp=self.scan_basis, 
+            if_d3 = self.if_d3,
+            if_chk = self.if_chk, 
+            define_charge=self.charge, 
+            solvation_model="scrf(SMD,solvent=water)",
+            nproc=self.nproc).run(prefix=get_this_sys_prefix)
         
-        run_file = [ff for ff in os.listdir() if 'RigScan' in ff and ".gjf" in ff] + ["sp_0.gjf"]
+        #run_file = [ff for ff in os.listdir() if 'RigScan' in ff and ".gjf" in ff] + ["sp_0.gjf"]
+        run_file = [ff for ff in os.listdir() if 'RigScan' in ff and ".gjf" in ff]
+
         sp_run_done_log = []
         if run_file:
             for _job in run_file:
                 _out = str(_job).split(".")[0]
                 cmd = f"g16 < {_job} > {_out}.log"
                 (status, output) = subprocess.getstatusoutput(cmd)
-                if status == 0 and os.path.isfile(f"{_out}.log"):
+                if os.path.isfile(f"{_out}.log"):
                     with open(f"{_out}.log", "r+") as ff:
                         tag = [hh for hh in ff.readlines() if hh.strip() and "Job cpu time" in hh]
                     if tag:
@@ -229,8 +284,8 @@ class main():
                     #logging.info(f"Initial optimization failed, check {_out}.log for more information")
                     continue
         else:
-            logging.info("No available run file for scan, terminated")
-            return 0
+            logging.info("No available run file for scan, abort")
+            return None
         
         return sp_run_done_log   
 
@@ -243,104 +298,113 @@ class main():
         cmd = f"Multiwfn {input_file} < _Param_GF.{tail}"   
         (_status, _) = subprocess.getstatusoutput(cmd)
         return _status
-
-    def transform_alternative(self, xyz_traj):
-        save = []
-        _track = 0
+    
+    def update_xyz_in_sdf(self, xyz_traj, template_sdf):
+        ## template_sdf should sdf block
+        with open(template_sdf, "r+") as f:
+            template_sdf_content = [line for line in f.readlines()]
+        
         with open(xyz_traj, "r+") as ff:
             content = [line for line in ff.readlines() if line.strip()]
         
-        atom_number = int(content[0].strip())
+        xyz_shape = int(content[0].strip())
 
-        geom_idx = [ii for ii in range(len(content)) if content[ii].strip() == str(atom_number)]
+        xyz_start_idx = [idx for idx, line in enumerate(template_sdf_content) 
+                                if line.strip().startswith(str(xyz_shape))
+                                and line.strip().endswith("V2000")][0] + 1
+        xyz_end_idx = xyz_start_idx + xyz_shape
+
+        geom_idx = [ii for ii in range(len(content)) if content[ii].strip() == str(xyz_shape)]
+
+        save = []
 
         for idx, geom in enumerate(geom_idx):
             try:
-                this_xyz = content[geom_idx[idx]:geom_idx[idx+1]]
+                xyz_block = content[geom_idx[idx]:geom_idx[idx+1]]
             except Exception as e:
-                this_xyz = content[geom_idx[idx]:]
+                xyz_block = content[geom_idx[idx]:]
             
-            #xyz_block = ""
-            #for line in this_xyz:
-            #    xyz_block += line
+            mol_block = ""
+            get_real_xyz = xyz_block[2:]
+
+            for ll in template_sdf_content[:xyz_start_idx]:
+                mol_block += ll
             
-            with open(f"RigScan_{idx}.gjf", "w+") as cc:
-                if self.if_chk:
-                    cc.write(f"%chk=RigScan_{idx}.chk\n")
-                
-                cc.write(f"%mem=20GB\n")
-                cc.write(f"%nproc={self.nproc}\n")
-
-                if self.if_d3:
-                    cmd = f"# {self.functional}/{self.scan_basis} em=GD3BJ  nosymm \n"
-                else:
-                    cmd = f"# {self.functional}/{self.scan_basis} nosymm \n"
-                
-                cc.write(cmd)
-                cc.write("\n")
-                cc.write(f"opt RigScan_{idx}\n")
-                cc.write("\n")
-                cc.write(f"{self.charge} 1\n")
-
-                for line in this_xyz[2:]:
-                    cc.write(line)
-                
-                cc.write("\n")
-                cc.write("\n")
-
-            _track += 1
+            i = 0
+            while i < xyz_shape:
+                x, y, z = [float(cc) for cc in get_real_xyz[i].strip().split()[1:]]
+                new_line = f"{x:>10.4f}{y:>10.4f}{z:>10.4f}" + template_sdf_content[xyz_start_idx+i][30:]
+                mol_block += new_line
+                i += 1
+            
+            for jj in template_sdf_content[xyz_end_idx:]:
+                mol_block += jj
+            
+            updated_mol = rdmolfiles.MolFromMolBlock(mol_block, removeHs=False)
+            
+            save.append(updated_mol)
         
-        if _track == len(geom_idx):
+        if len(save) == len(geom_idx):
             os.system(f"rm -f {xyz_traj}")
             logging.info("Processing rotational points done")
-            return
+            return save
         else:
             logging.info(f"Not properly save, check '{xyz_traj}' for all geom information")
-            return
+            return 0
 
     def result_1D_scan(self, scan_done_log):
         ## should have some kind of _Param.log2dih
         _log_dih = {}
         self.dih_param()
         for log in scan_done_log:
-            if "sp" not in log and "opt" not in log:
-                _prefix = log.split(".")[0]
-                with open(log, "r+") as ff:
-                    content = [hh for hh in ff.readlines() if hh.strip()]
-                
-                validate_flag = [cc for cc in content if "Normal termination" in cc]
-                
-                if validate_flag:
-                    ene = float([cc.strip() for cc in content if "SCF Done" in cc][0].split()[-5])
-                    get_dih_cmd = f"Multiwfn {log} < _Param.log2dih.1 | grep 'The dihedral angle is' > _TMEP_{_prefix}.dih"
-                    (_status, _) = subprocess.getstatusoutput(get_dih_cmd)
-                    if _status == 0 and os.path.isfile(f"_TMEP_{_prefix}.dih") and os.path.getsize(f"_TMEP_{_prefix}.dih"):
-                        with open(f"_TMEP_{_prefix}.dih", "r") as f:
-                            line = [ff.strip() for ff in f.readlines()][0]
-                            dih = Decimal(line.split()[-2]).quantize(Decimal('0'), rounding=ROUND_HALF_UP)
-                            _log_dih.setdefault(log, (dih, ene))
-        
-         ## get docking pose sp energy
-        _dock = {}
-        try:
-            dockP_log = [cc for cc in scan_done_log if "sp" in cc][0]
-        except Exception as e:
-            logging.info("Something went wrong for docking pose scan, check if sp*.gjf exist")
-        else:
-            with open(dockP_log, "r+") as ff:
+            #if "sp" not in log and "opt" not in log:
+            _prefix = log.split(".")[0]
+            with open(log, "r+") as ff:
                 content = [hh for hh in ff.readlines() if hh.strip()]
             
             validate_flag = [cc for cc in content if "Normal termination" in cc]
-
+            
             if validate_flag:
                 ene = float([cc.strip() for cc in content if "SCF Done" in cc][0].split()[-5])
-                get_dih_cmd = f"Multiwfn {dockP_log} < _Param.log2dih.1 | grep 'The dihedral angle is' > _TMEP_dockP.dih"
+                get_dih_cmd = f"Multiwfn {log} < _Param.log2dih.1 | grep 'The dihedral angle is' > _TMEP_{_prefix}.dih"
                 (_status, _) = subprocess.getstatusoutput(get_dih_cmd)
-                if _status == 0 and os.path.isfile("_TMEP_dockP.dih") and os.path.getsize("_TMEP_dockP.dih"):
-                    with open("_TMEP_dockP.dih", "r+") as f:
+                
+                if _status == 0 and os.path.isfile(f"_TMEP_{_prefix}.dih") and os.path.getsize(f"_TMEP_{_prefix}.dih"):
+                    with open(f"_TMEP_{_prefix}.dih", "r") as f:
                         line = [ff.strip() for ff in f.readlines()][0]
                         dih = Decimal(line.split()[-2]).quantize(Decimal('0'), rounding=ROUND_HALF_UP)
-                        _dock.setdefault("Docking Pose", (dih, ene))
+                        _log_dih.setdefault(log, (dih, ene))
+        
+         ## get docking pose sp energy, account for RigScan_0.log
+        try:
+            _log_dih["RigScan_0.log"]
+        except Exception as e:
+            logging.info("Failed at DockingPose energy calculation")
+            logging.info("check if [charge] and [spin] setting are reasonble")
+            logging.info("or change [functional] and/or [basis]")
+            logging.info("abort")
+            return
+        
+        #_dock = {"Docking Pose", _log_dih["RigScan_0.log"]}
+        #try:
+        #    dockP_log = [cc for cc in scan_done_log if "sp" in cc][0]
+        #except Exception as e:
+        #    logging.info("Something went wrong for docking pose scan, check if sp*.gjf exist")
+        #else:
+        #    with open(dockP_log, "r+") as ff:
+        #        content = [hh for hh in ff.readlines() if hh.strip()]
+        #    
+        #    validate_flag = [cc for cc in content if "Normal termination" in cc]
+
+        #    if validate_flag:
+        #        ene = float([cc.strip() for cc in content if "SCF Done" in cc][0].split()[-5])
+        #        get_dih_cmd = f"Multiwfn {dockP_log} < _Param.log2dih.1 | grep 'The dihedral angle is' > _TMEP_dockP.dih"
+        #        (_status, _) = subprocess.getstatusoutput(get_dih_cmd)
+        #        if _status == 0 and os.path.isfile("_TMEP_dockP.dih") and os.path.getsize("_TMEP_dockP.dih"):
+        #            with open("_TMEP_dockP.dih", "r+") as f:
+        #                line = [ff.strip() for ff in f.readlines()][0]
+        #                dih = Decimal(line.split()[-2]).quantize(Decimal('0'), rounding=ROUND_HALF_UP)
+        #                _dock.setdefault("Docking Pose", (dih, ene))
                 
         ## there you have _log_dih
         if _log_dih:
@@ -356,9 +420,20 @@ class main():
             X_smooth = np.linspace(max(X), min(X), 200)
             Y_smooth = make_interp_spline(X,_barrier_list)(X_smooth)
 
+            ## identify where lies docking pose (RigScan_0)
+            #print(_log_dih["RigScan_0.log"])
+            torsion_dock = _log_dih["RigScan_0.log"][0]
+            torsion_dock_x = [i for i, aa in enumerate(X_torsion_angle) if abs(torsion_dock - aa) < 1e-3][0]
+            barrier_dock = (_log_dih["RigScan_0.log"][-1] - _ene_min) *627.51
+
             plt.figure(figsize=(12,8), dpi=300)
             plt.plot(X, _barrier_list, 'bo')
             plt.plot(X_smooth, Y_smooth, 'g')
+
+            plt.scatter(torsion_dock_x, barrier_dock,  color="red", s=100, marker="*")
+            plt.annotate(f'Docking Pose: \n ({torsion_dock:.0f} degree, {barrier_dock:.2f}) kcal/mol',
+                         xy=(torsion_dock_x, barrier_dock), xytext=(torsion_dock_x+0.5, barrier_dock+0.2),
+                         arrowprops=dict(facecolor='red', shrink=0.01))
 
             plt.xticks(X, X_torsion_angle, rotation=30)
 
@@ -368,22 +443,22 @@ class main():
             plt.savefig(f"Graph_RigidScan_1D.png")
 
             ## process docking pose
-            if _dock:
-                dockP_ene = (_dock["Docking Pose"][-1] - _ene_min) * 627.51
-                save_barrier =[dockP_ene] + _barrier_list
-                save_torsion_angle = [_dock["Docking Pose"][0]] + X_torsion_angle
-                save_indicator = ["Docking Pose"] + [cc[0].split(".")[0] for cc in _log_dih_sort]
-            else:
-                save_indicator = [cc[0].split(".")[0] for cc in _log_dih_sort]
-                save_torsion_angle = X_torsion_angle
-                save_barrier = _barrier_list
+            #if _dock:
+            #    dockP_ene = (_dock["Docking Pose"][-1] - _ene_min) * 627.51
+            #    save_barrier =[dockP_ene] + _barrier_list
+            #    save_torsion_angle = [_dock["Docking Pose"][0]] + X_torsion_angle
+            #    save_indicator = ["Docking Pose"] + [cc[0].split(".")[0] for cc in _log_dih_sort]
+            #else:
+            #    save_indicator = [cc[0].split(".")[0] for cc in _log_dih_sort]
+            #    save_torsion_angle = X_torsion_angle
+            #    save_barrier = _barrier_list
 
-            df = pd.DataFrame({"Pose/File Name": save_indicator, 
-                               "Rotation Angle/degree":save_torsion_angle, 
-                               "Energy/kcal.mol-1": save_barrier})
+            df = pd.DataFrame({"Pose/File Name": [cc[0].split(".")[0] for cc in _log_dih_sort], 
+                               "Rotation Angle/degree":X_torsion_angle, 
+                               "Energy/kcal.mol-1": _barrier_list})
             df.to_csv(f"Data_RigidScan_1D.csv", index=None)
         else:
-            logging.info("Failed at get final result, check *.log file to see if no convergence meet")
+            logging.info("Failed at get final result, check *.log file to see if no convergence meet, abort")
             return 
 
         ## seach minima and maxima
@@ -482,9 +557,9 @@ class main():
                         _track_words += f"{cc} "
         
         logging.info("Done with current mol")
-        logging.info(f"Energy barrier is: {barrier:.3f} /kcal.mol-1")
-        if _dock:
-            logging.info(f"Energy barrier for docking pose is: {dockP_ene:.3f} /kcal/mol-1")
+        logging.info(f"Energy barrier is: {barrier:.2f} /kcal.mol-1")
+        
+        logging.info(f"Energy barrier for docking pose is: {barrier_dock:.2f} /kcal/mol-1")
 
         logging.info(_track_words)
 
@@ -505,65 +580,76 @@ class main():
         ## there should be 2 param files
         _params = [pp for pp in os.listdir(".") if "_Param.log2dih" in pp]
         for log in scan_done_log:
-            if "sp" not in log and "opt" not in log:
-                _prefix = log.split(".")[0]
-                with open(log, "r+") as ff:
-                    content = [hh for hh in ff.readlines() if hh.strip()]
-                
-                validate_flag = [cc for cc in content if "Normal termination" in cc]
-                
-                if validate_flag:
-                    ene = float([cc.strip() for cc in content if "SCF Done" in cc][0].split()[-5])
-                    _dic_dih_each = {}
-                    for each_pp in _params:
-                        dih_label = int(each_pp.split(".")[-1])
-                        get_dih_cmd = f"Multiwfn {log} < {each_pp} | grep 'The dihedral angle is' > _TMEP_{_prefix}_{dih_label}.dih"
-                        (_status, _) = subprocess.getstatusoutput(get_dih_cmd)
-                        if _status == 0 and \
-                            os.path.isfile(f"_TMEP_{_prefix}_{dih_label}.dih") and \
-                            os.path.getsize(f"_TMEP_{_prefix}_{dih_label}.dih"):
-                            with open(f"_TMEP_{_prefix}_{dih_label}.dih", "r") as f:
-                                line = [ff.strip() for ff in f.readlines()][0]
-                            
-                            _dih = Decimal(line.split()[-2]).quantize(Decimal('0'), rounding=ROUND_HALF_UP)
-                            _dic_dih_each.setdefault(dih_label, _dih)
-
-                    _sort_each = sorted(_dic_dih_each.items(), key=lambda x:x[0])
-                    dih = [cc[-1] for cc in _sort_each]
-                                          
-                    _log_dih.setdefault(log, (dih, ene))
-         ## get docking pose sp energy
-        _dock = {}
-        try:
-            dockP_log = [cc for cc in scan_done_log if "sp" in cc][0]
-        except Exception as e:
-            logging.info("Something went wrong for docking pose scan, check if sp*.gjf exist")
-        else:
-            with open(dockP_log, "r+") as ff:
+            #if "sp" not in log and "opt" not in log:
+            _prefix = log.split(".")[0]
+            with open(log, "r+") as ff:
                 content = [hh for hh in ff.readlines() if hh.strip()]
             
             validate_flag = [cc for cc in content if "Normal termination" in cc]
-
+            
             if validate_flag:
                 ene = float([cc.strip() for cc in content if "SCF Done" in cc][0].split()[-5])
+                _dic_dih_each = {}
                 for each_pp in _params:
-                    _dic_dih_each = {}
                     dih_label = int(each_pp.split(".")[-1])
-                    get_dih_cmd = f"Multiwfn {dockP_log} < {each_pp} | grep 'The dihedral angle is' > _TMEP_dockP_{dih_label}.dih"
+                    get_dih_cmd = f"Multiwfn {log} < {each_pp} | grep 'The dihedral angle is' > _TMEP_{_prefix}_{dih_label}.dih"
                     (_status, _) = subprocess.getstatusoutput(get_dih_cmd)
                     if _status == 0 and \
-                    os.path.isfile(f"_TMEP_dockP_{dih_label}") and \
-                    os.path.getsize(f"_TMEP_dockP_{dih_label}.dih"):
-                        with open(f"_TMEP_dockP_{dih_label}", "r+") as f:
+                        os.path.isfile(f"_TMEP_{_prefix}_{dih_label}.dih") and \
+                        os.path.getsize(f"_TMEP_{_prefix}_{dih_label}.dih"):
+                        with open(f"_TMEP_{_prefix}_{dih_label}.dih", "r") as f:
                             line = [ff.strip() for ff in f.readlines()][0]
                         
                         _dih = Decimal(line.split()[-2]).quantize(Decimal('0'), rounding=ROUND_HALF_UP)
                         _dic_dih_each.setdefault(dih_label, _dih)
 
                 _sort_each = sorted(_dic_dih_each.items(), key=lambda x:x[0])
-                
                 dih = [cc[-1] for cc in _sort_each]
-                _dock.setdefault("Docking Pose", (dih, ene))
+                                        
+                _log_dih.setdefault(log, (dih, ene))
+         ## get docking pose sp energy
+        #_dock = {}
+        try:
+            _log_dih["RigScan_0.log"]
+        except Exception as e:
+            logging.info("Failed at DockingPose energy calculation")
+            logging.info("check if [charge] and [spin] setting are reasonble")
+            logging.info("or change [functional] and/or [basis]")
+            logging.info("abort")
+            return
+        
+        #_dock = {"Docking Pose", _log_dih["RigScan_0.log"]}
+        
+        #try:
+        #    dockP_log = [cc for cc in scan_done_log if "sp" in cc][0]
+        #except Exception as e:
+        #    logging.info("Something went wrong for docking pose scan, check if sp*.gjf exist")
+        #else:
+        #    with open(dockP_log, "r+") as ff:
+        #        content = [hh for hh in ff.readlines() if hh.strip()]
+            
+        #    validate_flag = [cc for cc in content if "Normal termination" in cc]
+
+        #    if validate_flag:
+        #        ene = float([cc.strip() for cc in content if "SCF Done" in cc][0].split()[-5])
+        #        for each_pp in _params:
+        #            _dic_dih_each = {}
+        #            dih_label = int(each_pp.split(".")[-1])
+        #            get_dih_cmd = f"Multiwfn {dockP_log} < {each_pp} | grep 'The dihedral angle is' > _TMEP_dockP_{dih_label}.dih"
+        #            (_status, _) = subprocess.getstatusoutput(get_dih_cmd)
+        #            if _status == 0 and \
+        #            os.path.isfile(f"_TMEP_dockP_{dih_label}") and \
+        #            os.path.getsize(f"_TMEP_dockP_{dih_label}.dih"):
+        #                with open(f"_TMEP_dockP_{dih_label}", "r+") as f:
+        #                    line = [ff.strip() for ff in f.readlines()][0]
+                        
+        #                _dih = Decimal(line.split()[-2]).quantize(Decimal('0'), rounding=ROUND_HALF_UP)
+        #                _dic_dih_each.setdefault(dih_label, _dih)
+
+        #        _sort_each = sorted(_dic_dih_each.items(), key=lambda x:x[0])
+        #        
+        #        dih = [cc[-1] for cc in _sort_each]
+        #        _dock.setdefault("Docking Pose", (dih, ene))
         
         
         ## there you have _log_dih
@@ -579,26 +665,26 @@ class main():
             X_dih2 = [cc[-1][0][1] for cc in _log_dih_sort]
 
             ## process docking pose
-            if _dock:
-                dockP_ene = (_dock["Docking Pose"][-1] - _ene_min) * 627.51
-                save_barrier =[dockP_ene] + _barrier_list
-                save_dih1 = [_dock["Docking Pose"][0][0]] + X_dih1
-                save_dih2 = [_dock["Docking Pose"][0][1]] + X_dih2
-                save_indicator = ["Docking Pose"] + [cc[0].split(".")[0] for cc in _log_dih_sort]
-            else:
-                save_indicator = [cc[0].split(".")[0] for cc in _log_dih_sort]
-                save_dih1 = X_dih1
-                save_dih2 = X_dih2
-                save_barrier = _barrier_list
+            #if _dock:
+            #    dockP_ene = (_dock["Docking Pose"][-1] - _ene_min) * 627.51
+            #    save_barrier =[dockP_ene] + _barrier_list
+            #    save_dih1 = [_dock["Docking Pose"][0][0]] + X_dih1
+            #    save_dih2 = [_dock["Docking Pose"][0][1]] + X_dih2
+            #    save_indicator = ["Docking Pose"] + [cc[0].split(".")[0] for cc in _log_dih_sort]
+            #else:
+            #    save_indicator = [cc[0].split(".")[0] for cc in _log_dih_sort]
+            #    save_dih1 = X_dih1
+            #    save_dih2 = X_dih2
+            #    save_barrier = _barrier_list
 
-            df = pd.DataFrame({"Pose/File Name": save_indicator, 
-                               f"DIH:{self.bond1}/degree": save_dih1,
-                               f"DIH:{self.bond2}/degree": save_dih2,
-                               "Energy/kcal.mol-1": save_barrier})
-            df.to_csv(f"Data_RigidScan_1D.csv", index=None)
+            df = pd.DataFrame({"Pose/File Name": [cc[0].split(".")[0] for cc in _log_dih_sort], 
+                               f"DIH:{self.bond1}/degree": X_dih1,
+                               f"DIH:{self.bond2}/degree": X_dih2,
+                               "Energy/kcal.mol-1": _barrier_list})
+            df.to_csv(f"Data_RigidScan_2D.csv", index=None)
 
         else:
-            logging.info("Failed at get final result, check *.log file to see if no convergence meet")
+            logging.info("Failed at get final result, check *.log file to see if no convergence meet, abort")
             return
 
         ## graph and conf save
@@ -663,6 +749,16 @@ class main():
             
             plt.colorbar(a)
         
+        torsion_dock = _log_dih["RigScan_0.log"][0]
+        torsion_dock_y = [i for i, aa in enumerate(torsion_angle_A) if abs(torsion_dock[0] - aa) < 1e-3][0]
+        torsion_dock_x = [i for i, aa in enumerate(torsion_angle_B) if abs(torsion_dock[1] - aa) < 1e-3][0]
+        barrier_dock = (_log_dih["RigScan_0.log"][-1] - _ene_min) *627.51
+
+        plt.scatter(torsion_dock_x, torsion_dock_y,  color="red", s=100, marker="*")
+        plt.annotate(f'Docking Pose: \n ({torsion_angle_B[torsion_dock_x]:.0f} degree, {torsion_angle_A[torsion_dock_y]:.0f} degree) \n {barrier_dock:.2f} kcal/mol',
+                        xy=(torsion_dock_x, torsion_dock_y), xytext=(torsion_dock_x+0.5, torsion_dock_y+0.2),
+                        arrowprops=dict(facecolor='red', shrink=0.01))
+
         y_ticks = torsion_angle_A
         x_ticks = torsion_angle_B
 
@@ -827,8 +923,7 @@ class main():
         
         logging.info("Done with current mol")
         logging.info(f"Energy barrier is: {barrier:.3f} /kcal.mol-1")
-        if _dock:
-            logging.info(f"Energy barrier for docking pose is: {dockP_ene:.3f} /kcal/mol-1")
+        logging.info(f"Energy barrier for docking pose is: {barrier_dock:.3f} /kcal/mol-1")
 
         logging.info(_track_words)
 
@@ -858,22 +953,31 @@ class main():
         return 
         
 
-    def proceed(self):
+    def run(self):
         ## initial run
         logging.info("STEP1: Try to initialize system and run optimization")
         try:
-            opt_run_done_log = self.run_initial()
+            _initial_opt = self.run_initial()
         except Exception as e:
             logging.info("Termination at optimization stage")
             return
 
-        if not opt_run_done_log:
+        if not _initial_opt:
             logging.info("Termination at optimization stage")
             return
 
+        xyz_block = self.get_conservative_xyz(_initial_opt[0])
+        if not xyz_block:
+            logging.info("Termination at optimization stage: failed for xyz block generation")
+            return
+        
+        with open(os.path.join(self.work_dir, "xyz"), "w+") as cc:
+            for line in xyz_block:
+                cc.write(line)
+
         logging.info("STEP2: Try to do rotation scan")
         try:
-            sp_run_don_log = self.run_rotation(opt_run_done_log)
+            sp_run_don_log = self.run_rotation()
         except Exception as e:
             logging.info("Termination at rotation scan stage")
             return 
@@ -887,6 +991,9 @@ class main():
         else:
             self.result_1D_scan(sp_run_don_log)
         
+        if not self.verbose:
+            os.system(f"rm -f {self.prefix}.opt.sdf")
+            
         return
 
 

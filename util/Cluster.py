@@ -78,9 +78,10 @@ class cluster():
         
     def get_xyz(self, mol):
         xyz = mol.GetConformer().GetPositions()
-        heavy_atom_fac = np.array([1 if atom.GetSymbol() != 'H' else 0 for atom in mol.GetAtoms()]).reshape(-1, 1)
-        xyz_heavy = np.multiply(xyz, heavy_atom_fac)
-        _xyz = np.delete(xyz_heavy, np.where(np.sum(xyz_heavy, axis=1)==0.0)[0], axis=0)
+        heavy_atom_fac = np.array([1 if atom.GetSymbol() != 'H' else 0 for atom in mol.GetAtoms()])
+        #xyz_heavy = np.multiply(xyz, heavy_atom_fac)
+        _xyz = np.delete(xyz, np.where(heavy_atom_fac==0)[0], axis=0)
+        #_xyz = np.delete(xyz_heavy, np.where(np.sum(xyz_heavy, axis=1)==0.0)[0], axis=0)
         return _xyz
     
     def distance(self, ref_xyz, mol_xyz):
@@ -110,6 +111,7 @@ class cluster():
 
         ## decrease redundancy
         i = 1
+
         while i < len(self.sample):
             if self.do_align:
                 involved_saved_mol = [Align(SearchMolObj=_list_saved_mol[ii],

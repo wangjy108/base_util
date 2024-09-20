@@ -103,6 +103,10 @@ class cluster():
             return None
             
         #ref_xyz = self.get_xyz(self.ref)
+
+        if self.distance_cutoff <= 0 and self.only_reduce_duplicate:
+            return self.sample
+        
         
         sample_xyz = [self.get_xyz(self.sample[i]) for i in range(len(self.sample))]
 

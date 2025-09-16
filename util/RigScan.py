@@ -372,7 +372,7 @@ class main():
                 except Exception as e:
                     x, y, z = self.get_real_xyz_func(get_real_xyz[i][2:].strip())
                 else:
-                    if len(xyz) !=3:
+                    if len(xyz) != 3:
                         x, y, z = self.get_real_xyz_func(get_real_xyz[i][2:].strip())
                     else:
                         x, y, z = xyz

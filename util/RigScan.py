@@ -105,6 +105,41 @@ class main():
         
         return xyz_block
     
+    def get_full_digit(self, idx, txt):
+        upper = idx
+        lower = idx
+        ## forward
+        i = 1
+        while i < len(txt):
+            try:
+                int(txt[idx+i])
+            except Exception as e:
+                break
+            upper = idx+i
+            i+= 1
+
+        ## backward
+        j = 1
+        while j <= idx:
+            try:
+                int(txt[idx-j])
+            except Exception as e:
+                if txt[idx-j] == '-':
+                    lower = idx -j
+                break
+            lower = idx - j
+            j += 1
+        
+        return float(txt[lower: upper+1])
+    
+    def get_real_xyz_func(self, text_block):
+        ## find dot index
+        dot_idx = [ii for ii, dd in enumerate(text_block) if dd == '.']
+
+        xyz = [self.get_full_digit(dot_ii, text_block) for iii, dot_ii in enumerate(dot_idx)]
+
+        return xyz 
+    
     def run_initial(self):
         if not self.input_mol:
             logging.info("Bad input, nothing to calc, abort")
@@ -332,7 +367,19 @@ class main():
             
             i = 0
             while i < xyz_shape:
-                x, y, z = [float(cc) for cc in get_real_xyz[i].strip().split()[1:]]
+                try:
+                    xyz = [float(cc) for cc in get_real_xyz[i][2:].strip().split()]
+                except Exception as e:
+                    x, y, z = self.get_real_xyz_func(get_real_xyz[i][2:].strip())
+                else:
+                    if len(xyz) !=3:
+                        x, y, z = self.get_real_xyz_func(get_real_xyz[i][2:].strip())
+                    else:
+                        x, y, z = xyz
+                        
+                #x, y, z = [float(cc) for cc in get_real_xyz[i].strip().split()[1:]]
+                #print(x,y,z)
+
                 new_line = f"{x:>10.4f}{y:>10.4f}{z:>10.4f}" + template_sdf_content[xyz_start_idx+i][30:]
                 mol_block += new_line
                 i += 1

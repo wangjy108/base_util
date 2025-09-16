@@ -153,7 +153,8 @@ class ConfGen():
                                          self.save_file_name,\
                                          self.serial_name)
 
-        logging.info(f"Generated confortmation saved in {self.save_file_name}")
+        if os.path.getsize(self.save_file_name):
+            logging.info(f"Generated confortmation saved in {self.save_file_name}")
 
         if left_smi:
             ee = pd.DataFrame({"":left_smi})
